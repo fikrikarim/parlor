@@ -45,6 +45,9 @@ Browser (playback + transcript)
 ## Quick start
 
 ```bash
+git clone https://github.com/fikrikarim/parlor.git
+cd parlor
+
 # Install uv if you don't have it
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
