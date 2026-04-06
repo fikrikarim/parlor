@@ -18,9 +18,10 @@ from fastapi.responses import HTMLResponse
 
 import litert_lm
 import tts
-
-HF_REPO = "litert-community/gemma-4-E2B-it-litert-lm"
-HF_FILENAME = "gemma-4-E2B-it.litertlm"
+#HF_REPO = "litert-community/gemma-4-E2B-it-litert-lm"
+#HF_FILENAME = "gemma-4-E2B-it.litertlm"
+HF_REPO = "litert-community/gemma-4-E4B-it-litert-lm"
+HF_FILENAME = "gemma-4-E4B-it.litertlm"
 
 
 def resolve_model_path() -> str:
@@ -252,4 +253,4 @@ async def websocket_endpoint(ws: WebSocket):
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "8000"))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    uvicorn.run(app, host="localhost", port=port)

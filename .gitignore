@@ -20,3 +20,4 @@ default.profraw
 # IDE
 .idea/
 .vscode/
+.env

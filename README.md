@@ -53,6 +53,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 cd src
 uv sync
+uv pip install litert-lm-api-nightly
 uv run server.py
 ```
 
