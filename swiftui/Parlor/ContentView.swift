@@ -89,7 +89,7 @@ struct ContentView: View {
                 .font(.system(size: 18, weight: .semibold, design: .rounded))
                 .foregroundStyle(Theme.textPrimary)
 
-            Text("Gemma 4 E2B")
+            Text(ModelConfig.llmModelID.components(separatedBy: "/").last ?? "MLX")
                 .font(.system(size: 11, weight: .medium, design: .monospaced))
                 .foregroundStyle(Theme.textSecondary)
                 .padding(.horizontal, 8)

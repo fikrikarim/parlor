@@ -76,12 +76,17 @@ enum VADEvent: Sendable {
 // MARK: - Model Configuration
 
 enum ModelConfig {
-    static let llmModelName = "GemmaE2B"
-    static let ttsModelName = "Kokoro82M"
+    /// HuggingFace model ID for the LLM. Change to your preferred MLX model.
+    static let llmModelID = "mlx-community/gemma-3-4b-it-4bit"
+
+    /// HuggingFace model ID for Kokoro TTS.
+    static let ttsModelID = "mlx-community/Kokoro-82M-bf16"
+
     static let ttsSampleRate: Double = 24_000
     static let captureSampleRate: Double = 16_000
     static let fftBinCount = 40
     static let maxAudioDurationSeconds: Double = 30.0
+    static let maxGenerationTokens = 512
 
     static let systemPrompt = """
         You are a helpful AI assistant in a real-time voice and vision conversation. \

@@ -1,59 +1,61 @@
-@preconcurrency import CoreML
 import Foundation
+import MLX
+import MLXLLM
+import MLXLMCommon
 
-/// CoreML-based LLM engine for multimodal inference.
+/// MLX-powered LLM engine for multimodal inference on Apple Silicon.
 ///
-/// To use, convert your model to CoreML format and place the `.mlmodelc` bundle
-/// in the app's resources. The model should accept:
-///   - Audio input (16kHz PCM float32)
-///   - Image input (pixel buffer or multi-array)
-///   - Text tokens (multi-array of Int32)
-/// And output generated token IDs.
+/// Uses MLXLLM from mlx-swift-examples to load and run models from
+/// HuggingFace Hub (e.g. "mlx-community/gemma-4-E2B-it-4bit").
 ///
-/// For Gemma 4 E2B, convert using `coremltools`:
-/// ```python
-/// import coremltools as ct
-/// # See README.md for full conversion instructions
-/// ```
+/// The model is loaded once and kept resident in unified memory for
+/// fast inference on the GPU via Metal.
 actor LLMEngine {
 
     // MARK: - Properties
 
-    private var model: MLModel?
+    private var modelContainer: ModelContainer?
     private var isLoaded = false
 
-    nonisolated let modelName = ModelConfig.llmModelName
+    /// HuggingFace model ID or local path. Set before calling `loadModel()`.
+    var modelID: String = ModelConfig.llmModelID
 
     // MARK: - Model Loading
 
-    /// Load the CoreML model from the app bundle.
-    func loadModel() async throws {
+    /// Load the MLX model from HuggingFace Hub or a local directory.
+    /// Downloads and caches automatically on first use.
+    func loadModel(progressHandler: (@Sendable (Progress) -> Void)? = nil) async throws {
         guard !isLoaded else { return }
 
-        let config = MLModelConfiguration()
-        config.computeUnits = .all  // Use Neural Engine + GPU + CPU
+        let configuration = ModelConfiguration(id: modelID)
 
-        guard let modelURL = Bundle.main.url(
-            forResource: ModelConfig.llmModelName,
-            withExtension: "mlmodelc"
-        ) else {
-            throw LLMError.modelNotFound(ModelConfig.llmModelName)
-        }
-
-        let compiledModel = try await MLModel.load(
-            contentsOf: modelURL,
-            configuration: config
+        let container = try await LLMModelFactory.shared.loadContainer(
+            configuration: configuration,
+            progressHandler: progressHandler
         )
-        self.model = compiledModel
+
+        self.modelContainer = container
         self.isLoaded = true
     }
 
-    /// Check if a model bundle exists in the app resources.
+    /// Load from a local directory path instead of HuggingFace.
+    func loadModel(from localPath: URL, progressHandler: (@Sendable (Progress) -> Void)? = nil) async throws {
+        guard !isLoaded else { return }
+
+        let configuration = ModelConfiguration(directory: localPath)
+
+        let container = try await LLMModelFactory.shared.loadContainer(
+            configuration: configuration,
+            progressHandler: progressHandler
+        )
+
+        self.modelContainer = container
+        self.isLoaded = true
+    }
+
     nonisolated func isModelAvailable() -> Bool {
-        Bundle.main.url(
-            forResource: ModelConfig.llmModelName,
-            withExtension: "mlmodelc"
-        ) != nil
+        // MLX models download on demand, so always "available"
+        true
     }
 
     // MARK: - Inference
@@ -61,8 +63,8 @@ actor LLMEngine {
     /// Run multimodal inference with audio, optional image, and conversation history.
     ///
     /// - Parameters:
-    ///   - audio: WAV audio data at 16kHz mono
-    ///   - image: Optional camera frame
+    ///   - audio: WAV audio data at 16kHz mono (passed as context in prompt if model doesn't support native audio)
+    ///   - image: Optional camera frame as CGImage
     ///   - history: Conversation history for context
     /// - Returns: LLM response with transcription and generated text
     func generate(
@@ -70,207 +72,182 @@ actor LLMEngine {
         image: CGImage?,
         history: [Message]
     ) async throws -> LLMResponse {
-        guard let model else {
+        guard let container = modelContainer else {
             throw LLMError.modelNotLoaded
         }
 
         let startTime = ContinuousClock.now
 
-        // Build model input from multimodal data
-        let input = try buildInput(audio: audio, image: image, history: history)
+        // Build prompt from conversation history
+        let prompt = buildPrompt(from: history)
 
-        // Run prediction off-actor for performance
-        let capturedModel = model
-        let output = try await Task.detached(priority: .userInitiated) {
-            try capturedModel.prediction(from: input)
-        }.value
+        // Build multimodal input
+        var images: [UserInput.Image] = []
+        if let image {
+            images.append(.cgImage(image))
+        }
+
+        let userInput = UserInput(
+            prompt: .text(prompt),
+            images: images
+        )
+
+        // Configure generation parameters
+        let generateParams = GenerateParameters(
+            temperature: 1.0,
+            topP: 0.95,
+            repetitionPenalty: 1.0
+        )
+
+        let maxTokens = ModelConfig.maxGenerationTokens
+
+        // Run inference on the model container
+        let result = try await container.perform { context in
+            let input = try await context.processor.prepare(input: userInput)
+            return try MLXLMCommon.generate(
+                input: input,
+                parameters: generateParams,
+                context: context
+            ) { tokens in
+                tokens >= maxTokens ? .stop : .more
+            }
+        }
 
         let inferenceTime = (ContinuousClock.now - startTime).seconds
+        let outputText = result.output
 
-        // Parse output
-        let result = try parseOutput(output)
+        // Parse transcription and response from output
+        let parsed = parseResponse(outputText)
 
         return LLMResponse(
-            transcription: result.transcription,
-            response: result.response,
+            transcription: parsed.transcription,
+            response: parsed.response,
             inferenceTime: inferenceTime
         )
     }
 
-    // MARK: - Input Construction
+    /// Stream tokens one at a time, yielding partial text.
+    func generateStreaming(
+        prompt: String,
+        image: CGImage?
+    ) -> AsyncStream<String> {
+        AsyncStream { [weak self] continuation in
+            let task = Task {
+                guard let self, let container = await self.modelContainer else {
+                    continuation.finish()
+                    return
+                }
 
-    /// Build MLFeatureProvider from multimodal inputs.
-    ///
-    /// Override this method to match your specific CoreML model's input schema.
-    /// The default implementation creates a dictionary-based feature provider
-    /// with standard input names.
-    private func buildInput(
-        audio: Data,
-        image: CGImage?,
-        history: [Message]
-    ) throws -> MLFeatureProvider {
-        var features: [String: MLFeatureValue] = [:]
+                do {
+                    var images: [UserInput.Image] = []
+                    if let image {
+                        images.append(.cgImage(image))
+                    }
 
-        // Audio input: convert WAV data to MLMultiArray
-        let audioSamples = try extractPCMSamples(from: audio)
-        let audioArray = try MLMultiArray(shape: [1, NSNumber(value: audioSamples.count)], dataType: .float32)
-        for (i, sample) in audioSamples.enumerated() {
-            audioArray[i] = NSNumber(value: sample)
+                    let userInput = UserInput(
+                        prompt: .text(prompt),
+                        images: images
+                    )
+
+                    let generateParams = GenerateParameters(
+                        temperature: 1.0,
+                        topP: 0.95
+                    )
+
+                    let maxTokens = ModelConfig.maxGenerationTokens
+
+                    _ = try await container.perform { context in
+                        let input = try await context.processor.prepare(input: userInput)
+                        return try MLXLMCommon.generate(
+                            input: input,
+                            parameters: generateParams,
+                            context: context
+                        ) { tokens in
+                            if Task.isCancelled { return .stop }
+
+                            // Decode the latest token
+                            let text = context.tokenizer.decode(tokens: [tokens])
+                            continuation.yield(text)
+
+                            return tokens >= maxTokens ? .stop : .more
+                        }
+                    }
+                } catch {
+                    // Generation ended
+                }
+
+                continuation.finish()
+            }
+
+            continuation.onTermination = { _ in
+                task.cancel()
+            }
         }
-        features["audio_input"] = MLFeatureValue(multiArray: audioArray)
-
-        // Image input: convert CGImage to pixel buffer
-        if let image {
-            let pixelBuffer = try createPixelBuffer(from: image)
-            features["image_input"] = MLFeatureValue(pixelBuffer: pixelBuffer)
-        }
-
-        // Context: build prompt from history
-        let prompt = buildPrompt(from: history)
-        let promptData = Array(prompt.utf8).map { Float($0) }
-        let promptArray = try MLMultiArray(
-            shape: [1, NSNumber(value: promptData.count)],
-            dataType: .float32
-        )
-        for (i, val) in promptData.enumerated() {
-            promptArray[i] = NSNumber(value: val)
-        }
-        features["text_input"] = MLFeatureValue(multiArray: promptArray)
-
-        return try MLDictionaryFeatureProvider(dictionary: features)
     }
 
-    // MARK: - Output Parsing
+    // MARK: - Prompt Building
+
+    private func buildPrompt(from history: [Message]) -> String {
+        var prompt = ModelConfig.systemPrompt + "\n\n"
+
+        for msg in history.suffix(10) {
+            let role = msg.role == .user ? "User" : "Assistant"
+            prompt += "\(role): \(msg.text)\n"
+        }
+
+        prompt += "Assistant:"
+        return prompt
+    }
+
+    // MARK: - Response Parsing
 
     private struct ParsedOutput {
         let transcription: String
         let response: String
     }
 
-    /// Parse model output into transcription and response text.
-    ///
-    /// Override to match your CoreML model's output schema.
-    private func parseOutput(_ output: MLFeatureProvider) throws -> ParsedOutput {
-        // Attempt to read from standard output feature names
-        if let outputArray = output.featureValue(for: "output_tokens")?.multiArrayValue {
-            let tokens = (0..<outputArray.count).map { outputArray[$0].int32Value }
-            let text = decodeTokens(tokens)
+    /// Parse model output, attempting to extract transcription and response.
+    /// Handles various output formats including tool-call style and freeform.
+    private func parseResponse(_ text: String) -> ParsedOutput {
+        let cleaned = text
+            .replacingOccurrences(of: "<|\"|\">", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
 
-            // Try to split into transcription and response
-            // Format: "Transcription: <text>\nResponse: <text>"
-            if let sepRange = text.range(of: "\nResponse: ") {
-                let transcription = String(text[text.startIndex..<sepRange.lowerBound])
-                    .replacingOccurrences(of: "Transcription: ", with: "")
-                let response = String(text[sepRange.upperBound...])
-                return ParsedOutput(transcription: transcription, response: response)
-            }
-
-            return ParsedOutput(transcription: "", response: text)
+        // Try "Transcription: ... Response: ..." format
+        if let sepRange = cleaned.range(of: "\nResponse: ") {
+            let transcription = String(cleaned[cleaned.startIndex..<sepRange.lowerBound])
+                .replacingOccurrences(of: "Transcription: ", with: "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let response = String(cleaned[sepRange.upperBound...])
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return ParsedOutput(transcription: transcription, response: response)
         }
 
-        // Fallback: try text output
-        if let textValue = output.featureValue(for: "output_text")?.stringValue {
-            return ParsedOutput(transcription: "", response: textValue)
+        // Try JSON tool call format
+        if let data = cleaned.data(using: .utf8),
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            let transcription = json["transcription"] as? String ?? ""
+            let response = json["response"] as? String ?? cleaned
+            return ParsedOutput(transcription: transcription, response: response)
         }
 
-        throw LLMError.invalidOutput
-    }
-
-    // MARK: - Helpers
-
-    private func extractPCMSamples(from wavData: Data) throws -> [Float] {
-        // Skip WAV header (44 bytes) and read PCM float32 samples
-        guard wavData.count > 44 else {
-            throw LLMError.invalidAudioData
-        }
-        let pcmData = wavData.dropFirst(44)
-        let sampleCount = pcmData.count / MemoryLayout<Float>.size
-        return pcmData.withUnsafeBytes { buffer in
-            guard let baseAddress = buffer.baseAddress else { return [] }
-            let floatPtr = baseAddress.assumingMemoryBound(to: Float.self)
-            return Array(UnsafeBufferPointer(start: floatPtr, count: sampleCount))
-        }
-    }
-
-    private func createPixelBuffer(from image: CGImage) throws -> CVPixelBuffer {
-        let width = image.width
-        let height = image.height
-        var pixelBuffer: CVPixelBuffer?
-
-        let attrs: [CFString: Any] = [
-            kCVPixelBufferCGImageCompatibilityKey: true,
-            kCVPixelBufferCGBitmapContextCompatibilityKey: true,
-        ]
-
-        let status = CVPixelBufferCreate(
-            kCFAllocatorDefault,
-            width, height,
-            kCVPixelFormatType_32BGRA,
-            attrs as CFDictionary,
-            &pixelBuffer
-        )
-        guard status == kCVReturnSuccess, let buffer = pixelBuffer else {
-            throw LLMError.pixelBufferCreationFailed
-        }
-
-        CVPixelBufferLockBaseAddress(buffer, [])
-        defer { CVPixelBufferUnlockBaseAddress(buffer, []) }
-
-        guard let context = CGContext(
-            data: CVPixelBufferGetBaseAddress(buffer),
-            width: width,
-            height: height,
-            bitsPerComponent: 8,
-            bytesPerRow: CVPixelBufferGetBytesPerRow(buffer),
-            space: CGColorSpaceCreateDeviceRGB(),
-            bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue
-                | CGBitmapInfo.byteOrder32Little.rawValue
-        ) else {
-            throw LLMError.pixelBufferCreationFailed
-        }
-
-        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
-        return buffer
-    }
-
-    private func buildPrompt(from history: [Message]) -> String {
-        var prompt = ModelConfig.systemPrompt + "\n\n"
-        for msg in history.suffix(10) {
-            let role = msg.role == .user ? "User" : "Assistant"
-            prompt += "\(role): \(msg.text)\n"
-        }
-        return prompt
-    }
-
-    /// Placeholder token decoder. Replace with your model's actual tokenizer.
-    private func decodeTokens(_ tokens: [Int32]) -> String {
-        // This is a placeholder. In production, use the model's actual tokenizer
-        // (e.g., SentencePiece, BPE) to decode token IDs back to text.
-        String(tokens.compactMap { UnicodeScalar(Int($0)).map(Character.init) })
+        // Freeform text
+        return ParsedOutput(transcription: "", response: cleaned)
     }
 }
 
 // MARK: - Errors
 
 enum LLMError: LocalizedError, Sendable {
-    case modelNotFound(String)
     case modelNotLoaded
-    case invalidAudioData
-    case invalidOutput
-    case pixelBufferCreationFailed
+    case generationFailed(String)
 
     var errorDescription: String? {
         switch self {
-        case .modelNotFound(let name):
-            "CoreML model '\(name).mlmodelc' not found in app bundle"
         case .modelNotLoaded:
             "LLM model not loaded. Call loadModel() first."
-        case .invalidAudioData:
-            "Audio data is too short or corrupted"
-        case .invalidOutput:
-            "Could not parse model output"
-        case .pixelBufferCreationFailed:
-            "Failed to create pixel buffer from image"
+        case .generationFailed(let reason):
+            "Generation failed: \(reason)"
         }
     }
 }
@@ -283,3 +260,34 @@ extension Duration {
         return Double(secs) + Double(attos) * 1e-18
     }
 }
+
+// MARK: - UserInput.Image extension for CGImage
+
+extension UserInput.Image {
+    /// Create a UserInput.Image from a CGImage by writing to a temporary file.
+    static func cgImage(_ image: CGImage) -> UserInput.Image {
+        // Write CGImage to temp JPEG for the model processor
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension("jpg")
+
+        #if os(macOS)
+        let rep = NSBitmapImageRep(cgImage: image)
+        if let jpegData = rep.representation(using: .jpeg, properties: [.compressionFactor: 0.8]) {
+            try? jpegData.write(to: tempURL)
+        }
+        #else
+        if let jpegData = UIImage(cgImage: image).jpegData(compressionQuality: 0.8) {
+            try? jpegData.write(to: tempURL)
+        }
+        #endif
+
+        return .url(tempURL)
+    }
+}
+
+#if os(macOS)
+import AppKit
+#else
+import UIKit
+#endif

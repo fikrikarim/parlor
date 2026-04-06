@@ -41,18 +41,19 @@ final class ConversationViewModel {
         phase = .loading
         statusText = "Loading models..."
 
-        // Load models (gracefully handle missing models for development)
+        // Load MLX models (downloads from HuggingFace on first use)
         do {
-            if llm.isModelAvailable() {
-                try await llm.loadModel()
-                statusText = "LLM loaded. Loading TTS..."
-            } else {
-                statusText = "LLM model not found — running in demo mode"
+            statusText = "Downloading LLM (\(ModelConfig.llmModelID))..."
+            try await llm.loadModel { [weak self] progress in
+                Task { @MainActor [weak self] in
+                    let pct = Int(progress.fractionCompleted * 100)
+                    self?.statusText = "Downloading LLM... \(pct)%"
+                }
             }
+            statusText = "LLM loaded. Loading TTS..."
 
-            if tts.isModelAvailable() {
-                try await tts.loadModel()
-            }
+            try await tts.loadModel()
+            statusText = "Models loaded"
         } catch {
             errorMessage = error.localizedDescription
             statusText = "Model loading failed"
