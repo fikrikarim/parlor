@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Parlor needs microphone access for voice conversations with the AI.</string>
+    <key>NSCameraUsageDescription</key>
+    <string>Parlor needs camera access so the AI can see what you show it.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>Parlor processes speech on-device for voice conversations.</string>
+</dict>
+</plist>
