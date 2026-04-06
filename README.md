@@ -53,7 +53,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 cd src
 uv sync
-uv run python server.py
+uv run server.py
 ```
 
 Open [http://localhost:8000](http://localhost:8000), grant camera and microphone access, and start talking.
