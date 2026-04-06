@@ -43,13 +43,8 @@ final class ConversationViewModel {
 
         // Load MLX models (downloads from HuggingFace on first use)
         do {
-            statusText = "Downloading LLM (\(ModelConfig.llmModelID))..."
-            try await llm.loadModel { [weak self] progress in
-                Task { @MainActor [weak self] in
-                    let pct = Int(progress.fractionCompleted * 100)
-                    self?.statusText = "Downloading LLM... \(pct)%"
-                }
-            }
+            statusText = "Loading LLM (\(ModelConfig.llmModelID))..."
+            try await llm.loadModel()
             statusText = "LLM loaded. Loading TTS..."
 
             try await tts.loadModel()

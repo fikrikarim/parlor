@@ -50,15 +50,18 @@ The following Swift packages are used (declared in `Package.swift`):
 
 | Package | Source | Purpose |
 |---------|--------|---------|
-| `MLXLLM` | [ml-explore/mlx-swift-examples](https://github.com/ml-explore/mlx-swift-examples) | LLM inference via MLX |
-| `MLXLMCommon` | same | Shared LLM types and generation |
+| `MLXLLM` | [ml-explore/mlx-swift-lm](https://github.com/ml-explore/mlx-swift-lm) | LLM inference via MLX |
+| `MLXVLM` | same | Vision-language model inference |
+| `MLXLMCommon` | same | Shared types (ModelContainer, generation) |
+| `MLXLMHuggingFace` | same | HuggingFace Hub downloader |
+| `MLXLMTokenizers` | same | Tokenizer loading |
 | `KokoroSwift` | [mlalma/kokoro-ios](https://github.com/mlalma/kokoro-ios) | Kokoro-82M TTS via MLX |
 
 To add manually in Xcode:
 1. **File → Add Package Dependencies**
-2. Add `https://github.com/ml-explore/mlx-swift-examples.git` (branch: `main`)
+2. Add `https://github.com/ml-explore/mlx-swift-lm.git` (from: `3.0.0`)
 3. Add `https://github.com/mlalma/kokoro-ios.git` (branch: `main`)
-4. Link `MLXLLM`, `MLXLMCommon`, and `KokoroSwift` to your target
+4. Link `MLXLLM`, `MLXVLM`, `MLXLMCommon`, `MLXLMHuggingFace`, `MLXLMTokenizers`, and `KokoroSwift` to your target
 
 ## Models
 
@@ -102,7 +105,7 @@ ParlorApp
 ConversationViewModel (@MainActor, @Observable)
  ├── AudioCapture → VoiceActivityDetector → speech events
  ├── CameraManager → frame capture on demand
- ├── LLMEngine (actor) → MLX LLM inference via MLXLLM
+ ├── LLMEngine (actor) → MLX LLM/VLM via mlx-swift-lm + ChatSession
  ├── TTSEngine (actor) → MLX TTS via KokoroSwift
  └── AudioPlayer → streaming playback with level metering
 ```
