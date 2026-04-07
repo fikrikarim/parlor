@@ -1,8 +1,14 @@
-"""Platform-aware Kokoro TTS: mlx-audio on Apple Silicon, kokoro-onnx elsewhere."""
+"""Platform-aware Kokoro TTS: mlx-audio on Apple Silicon, kokoro-onnx elsewhere.
 
+Set MINIMAX_API_KEY to use MiniMax cloud TTS instead of local Kokoro models.
+"""
+
+import json
 import os
 import platform
 import sys
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 import numpy as np
@@ -19,6 +25,85 @@ class TTSBackend:
 
     def generate(self, text: str, voice: str = "af_heart", speed: float = 1.1) -> np.ndarray:
         raise NotImplementedError
+
+
+class MiniMaxTTSBackend(TTSBackend):
+    """MiniMax cloud TTS backend (https://api.minimax.io/v1/t2a_v2).
+
+    Activated when MINIMAX_API_KEY is set. Uses PCM audio format to avoid
+    any extra decoding dependencies — the hex-encoded PCM bytes are converted
+    directly to a float32 numpy array.
+
+    Supported voices: English_Graceful_Lady, English_Insightful_Speaker,
+    English_radiant_girl, English_Persuasive_Man, English_Lucky_Robot,
+    English_expressive_narrator.
+
+    Supported models: speech-2.8-hd (default), speech-2.8-turbo.
+    """
+
+    VOICES = [
+        "English_Graceful_Lady",
+        "English_Insightful_Speaker",
+        "English_radiant_girl",
+        "English_Persuasive_Man",
+        "English_Lucky_Robot",
+        "English_expressive_narrator",
+    ]
+
+    sample_rate: int = 32000
+
+    def __init__(self, api_key: str | None = None, base_url: str | None = None):
+        self._api_key = api_key or os.environ.get("MINIMAX_API_KEY", "")
+        if not self._api_key:
+            raise ValueError("MINIMAX_API_KEY is required for MiniMaxTTSBackend")
+        self._base_url = (
+            base_url or os.environ.get("MINIMAX_BASE_URL", "https://api.minimax.io")
+        ).rstrip("/")
+
+    def generate(
+        self, text: str, voice: str = "English_Graceful_Lady", speed: float = 1.0
+    ) -> np.ndarray:
+        """Synthesize speech and return float32 PCM audio array."""
+        url = f"{self._base_url}/v1/t2a_v2"
+        model = os.environ.get("MINIMAX_TTS_MODEL", "speech-2.8-hd")
+        payload = json.dumps(
+            {
+                "model": model,
+                "text": text,
+                "stream": False,
+                "voice_setting": {
+                    "voice_id": voice,
+                    "speed": speed,
+                    "vol": 1,
+                    "pitch": 0,
+                },
+                "audio_setting": {
+                    "sample_rate": self.sample_rate,
+                    "format": "pcm",
+                    "channel": 1,
+                },
+            }
+        ).encode()
+
+        req = urllib.request.Request(
+            url,
+            data=payload,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self._api_key}",
+            },
+        )
+        with urllib.request.urlopen(req) as resp:
+            result = json.loads(resp.read())
+
+        status = result.get("base_resp", {}).get("status_code", -1)
+        if status != 0:
+            msg = result.get("base_resp", {}).get("status_msg", "unknown error")
+            raise RuntimeError(f"MiniMax TTS API error {status}: {msg}")
+
+        audio_hex = result["data"]["audio"]
+        audio_bytes = bytes.fromhex(audio_hex)
+        return np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32) / 32767.0
 
 
 class MLXBackend(TTSBackend):
@@ -56,7 +141,18 @@ class ONNXBackend(TTSBackend):
 
 
 def load() -> TTSBackend:
-    """Load the best available TTS backend for this platform."""
+    """Load the best available TTS backend for this platform.
+
+    Priority:
+    1. MiniMax cloud TTS — if MINIMAX_API_KEY is set.
+    2. mlx-audio (Apple Silicon GPU) — on macOS arm64 unless KOKORO_ONNX is set.
+    3. kokoro-onnx (CPU) — fallback for all other platforms.
+    """
+    if os.environ.get("MINIMAX_API_KEY"):
+        backend = MiniMaxTTSBackend()
+        print(f"TTS: MiniMax cloud (sample_rate={backend.sample_rate})")
+        return backend
+
     if _is_apple_silicon() and not os.environ.get("KOKORO_ONNX"):
         try:
             backend = MLXBackend()
