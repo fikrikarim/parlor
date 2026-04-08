@@ -56,13 +56,22 @@ def load_models():
     engine.__enter__()
     print("Engine loaded.")
 
-    tts_backend = tts.load()
+    try:
+        tts_backend = tts.load()
+    except Exception:
+        # Clean up engine if TTS loading fails
+        engine.__exit__(None, None, None)
+        engine = None
+        raise
 
 
 @asynccontextmanager
 async def lifespan(app):
     await asyncio.get_event_loop().run_in_executor(None, load_models)
     yield
+    # Clean up engine resources on shutdown
+    if engine:
+        engine.__exit__(None, None, None)
 
 
 app = FastAPI(lifespan=lifespan)
