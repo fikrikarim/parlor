@@ -15,4 +15,5 @@ dependencies = [
     "soundfile>=0.13.1",
     "uvicorn[standard]>=0.43.0",
     "websockets>=16.0",
+    "python-dotenv>=1.0.0",
 ]
