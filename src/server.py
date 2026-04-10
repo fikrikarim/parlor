@@ -17,6 +17,9 @@ from fastapi.responses import HTMLResponse
 
 import tts
 
+from dotenv import load_dotenv
+load_dotenv()
+
 HF_REPO = "litert-community/gemma-4-E2B-it-litert-lm"
 HF_FILENAME = "gemma-4-E2B-it.litertlm"
 
