@@ -534,7 +534,7 @@ wheels = [
 
 [[package]]
 name = "litert-lm"
-version = "0.10.1"
+version = "0.11.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
@@ -543,17 +543,18 @@ dependencies = [
     { name = "prompt-toolkit" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/5c/63/f861f0f975556bd3139e0786a2de8db6ddf5478c0cc654a5f6ddca478360/litert_lm-0.10.1-py3-none-any.whl", hash = "sha256:edb1573a0c3b499ea6f2c3853faff8b0c5823f33ad2d1ead00c7cda9fbf4e3ec", size = 30295, upload-time = "2026-04-02T21:13:17.286Z" },
+    { url = "https://files.pythonhosted.org/packages/07/76/4e07a9dcc9a3a242459d7235e00f00c85e12df337166d2ff0c188b93fa98/litert_lm-0.11.0-py3-none-any.whl", hash = "sha256:a1c97d1693089f26ab94282829839ebef5d074bf1b090fd6d87cf13de22c565e", size = 37270, upload-time = "2026-05-04T22:23:06.818Z" },
 ]
 
 [[package]]
 name = "litert-lm-api"
-version = "0.10.1"
+version = "0.11.0"
 source = { registry = "https://pypi.org/simple" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/74/5b/2deaac172aae2a3aa0f0d50c538e38c07e9d34265c98c5b10843251a3ef0/litert_lm_api-0.10.1-cp312-cp312-macosx_12_0_arm64.whl", hash = "sha256:7ed8b4f077b73ca2df3461ba9c3887bf342a76a7b2cc4487ff439517b49a2992", size = 30977325, upload-time = "2026-04-02T21:10:44.213Z" },
-    { url = "https://files.pythonhosted.org/packages/a0/27/685cedd02d9ad4fc415cb2254793a46f4cc6a8c1414a105686bf4cda8e13/litert_lm_api-0.10.1-cp312-cp312-manylinux_2_35_aarch64.whl", hash = "sha256:e1c2a1db6cd77de30bf22d0e2335c767b2d2f40e91b54b127740d0b2e268ba77", size = 30104887, upload-time = "2026-04-02T21:06:08.558Z" },
-    { url = "https://files.pythonhosted.org/packages/87/2b/04132880efef2a6b9a67fd772c03e19b67516f762a7cacdc8d96a178291a/litert_lm_api-0.10.1-cp312-cp312-manylinux_2_35_x86_64.whl", hash = "sha256:474ee89194d68dabbcbb5e9eb3cddfa9268b9c3cf314e0be164edac999032fd6", size = 33055577, upload-time = "2026-04-02T21:13:08.434Z" },
+    { url = "https://files.pythonhosted.org/packages/87/ff/2ab25cb1bdd4ebcf20f1f4524e51c54e9f498e0775fa417b2a4bf33f37e6/litert_lm_api-0.11.0-py3-none-macosx_12_0_arm64.whl", hash = "sha256:5ae4a1e6b972fc1c058e18470d7e8a84ff489a14e7916e26d98c07059c8143e5", size = 19992301, upload-time = "2026-05-04T22:23:04.636Z" },
+    { url = "https://files.pythonhosted.org/packages/2e/7c/3350b17e6d1e333d066455be03fd605aadbe460598d2b77089a099fbd2bd/litert_lm_api-0.11.0-py3-none-manylinux_2_27_aarch64.whl", hash = "sha256:afbc8bee6370a07d5d39461d299bb50b25d08d43dd71897e961fcfaf1f8635cb", size = 42069370, upload-time = "2026-05-04T22:23:10.828Z" },
+    { url = "https://files.pythonhosted.org/packages/0b/e0/468888d42e55dfcd14874d6673b61d6e23bc78b4cbfaf7a6d870945f04e5/litert_lm_api-0.11.0-py3-none-manylinux_2_27_x86_64.whl", hash = "sha256:1e58702a5e81636007fa19044fe0c6973277b1cbd4f713fe6d22df43b3baa7f8", size = 44421883, upload-time = "2026-05-04T22:23:00.606Z" },
+    { url = "https://files.pythonhosted.org/packages/4a/36/2dfc16e3e69b72ce756d4b6f03930ecd53dcfc53f9017a6d80dff4e8e494/litert_lm_api-0.11.0-py3-none-win_amd64.whl", hash = "sha256:6de60b246c089d0229d5a8e4d8e889efb527adb7cce958c68ead32427cdd1e13", size = 24070847, upload-time = "2026-05-04T22:22:55.061Z" },
 ]
 
 [[package]]
@@ -824,7 +825,7 @@ dependencies = [
 requires-dist = [
     { name = "fastapi", specifier = ">=0.135.3" },
     { name = "kokoro-onnx", marker = "sys_platform == 'linux'", specifier = ">=0.5.0" },
-    { name = "litert-lm", specifier = ">=0.10.1" },
+    { name = "litert-lm", specifier = ">=0.11.0" },
     { name = "misaki", extras = ["en"], marker = "sys_platform == 'darwin'", specifier = ">=0.9.4" },
     { name = "mlx-audio", marker = "sys_platform == 'darwin'", specifier = ">=0.4.2" },
     { name = "num2words", marker = "sys_platform == 'darwin'", specifier = ">=0.5.14" },
