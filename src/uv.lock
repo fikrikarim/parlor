@@ -344,12 +344,6 @@ sdist = { url = "https://files.pythonhosted.org/packages/53/92/ec9ad04d0b5728dca
 wheels = [
     { url = "https://files.pythonhosted.org/packages/ac/9f/9c23e4a447b8f83120798f9279d0297a4d1360bdbf59ef49ebec78fe2545/hf_xet-1.4.3-cp37-abi3-macosx_10_12_x86_64.whl", hash = "sha256:d0da85329eaf196e03e90b84c2d0aca53bd4573d097a75f99609e80775f98025", size = 3805048, upload-time = "2026-03-31T22:39:53.105Z" },
     { url = "https://files.pythonhosted.org/packages/0b/f8/7aacb8e5f4a7899d39c787b5984e912e6c18b11be136ef13947d7a66d265/hf_xet-1.4.3-cp37-abi3-macosx_11_0_arm64.whl", hash = "sha256:e23717ce4186b265f69afa66e6f0069fe7efbf331546f5c313d00e123dc84583", size = 3562178, upload-time = "2026-03-31T22:39:51.295Z" },
-    { url = "https://files.pythonhosted.org/packages/df/9a/a24b26dc8a65f0ecc0fe5be981a19e61e7ca963b85e062c083f3a9100529/hf_xet-1.4.3-cp37-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:fc360b70c815bf340ed56c7b8c63aacf11762a4b099b2fe2c9bd6d6068668c08", size = 4212320, upload-time = "2026-03-31T22:39:42.922Z" },
-    { url = "https://files.pythonhosted.org/packages/53/60/46d493db155d2ee2801b71fb1b0fd67696359047fdd8caee2c914cc50c79/hf_xet-1.4.3-cp37-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:39f2d2e9654cd9b4319885733993807aab6de9dfbd34c42f0b78338d6617421f", size = 3991546, upload-time = "2026-03-31T22:39:41.335Z" },
-    { url = "https://files.pythonhosted.org/packages/bc/f5/067363e1c96c6b17256910830d1b54099d06287e10f4ec6ec4e7e08371fc/hf_xet-1.4.3-cp37-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:49ad8a8cead2b56051aa84d7fce3e1335efe68df3cf6c058f22a65513885baac", size = 4193200, upload-time = "2026-03-31T22:40:01.936Z" },
-    { url = "https://files.pythonhosted.org/packages/42/4b/53951592882d9c23080c7644542fda34a3813104e9e11fa1a7d82d419cb8/hf_xet-1.4.3-cp37-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:7716d62015477a70ea272d2d68cd7cad140f61c52ee452e133e139abfe2c17ba", size = 4429392, upload-time = "2026-03-31T22:40:03.492Z" },
-    { url = "https://files.pythonhosted.org/packages/8a/21/75a6c175b4e79662ad8e62f46a40ce341d8d6b206b06b4320d07d55b188c/hf_xet-1.4.3-cp37-abi3-win_amd64.whl", hash = "sha256:6b591fcad34e272a5b02607485e4f2a1334aebf1bc6d16ce8eb1eb8978ac2021", size = 3677359, upload-time = "2026-03-31T22:40:13.619Z" },
-    { url = "https://files.pythonhosted.org/packages/8a/7c/44314ecd0e89f8b2b51c9d9e5e7a60a9c1c82024ac471d415860557d3cd8/hf_xet-1.4.3-cp37-abi3-win_arm64.whl", hash = "sha256:7c2c7e20bcfcc946dc67187c203463f5e932e395845d098cc2a93f5b67ca0b47", size = 3533664, upload-time = "2026-03-31T22:40:12.152Z" },
 ]
 
 [[package]]
@@ -543,34 +537,36 @@ wheels = [
 
 [[package]]
 name = "litert-lm"
-version = "0.13.1"
+version = "0.14.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
-    { name = "huggingface-hub" },
     { name = "litert-lm-api" },
     { name = "litert-lm-builder" },
     { name = "prompt-toolkit" },
+    { name = "questionary" },
     { name = "typing-extensions" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/21/44/cdf075a78547d6dc2b5a34776ab5bd65a6643283b97f7f8f62ca110eea2a/litert_lm-0.13.1-py3-none-any.whl", hash = "sha256:2390a09693f3d728ecfad56119b326a9f9e302d2901392ff75b025040ca365b9", size = 60408, upload-time = "2026-06-03T16:07:17.443Z" },
+    { url = "https://files.pythonhosted.org/packages/ea/88/9f7ab754d4d60fcd1829b24c4ce8d716fbf62a8d490886480c196ed9e6a1/litert_lm-0.14.0-py3-none-any.whl", hash = "sha256:ed1c30adcf6d2cb114d93938ed54c04da5dff42203b66033b80691ab053abdf6", size = 63977, upload-time = "2026-07-08T18:01:27.686Z" },
 ]
 
 [[package]]
 name = "litert-lm-api"
-version = "0.13.1"
+version = "0.14.0"
 source = { registry = "https://pypi.org/simple" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/58/ae/5d1e2862d14ad1b08bdbc3392574dde37b98a06f4efb5181d946766ec81c/litert_lm_api-0.13.1-py3-none-macosx_12_0_arm64.whl", hash = "sha256:4a1bb68dbf5a60af9ac5fe03331968a7b4e91779e721cb531e6b41e71f2a2d77", size = 20352139, upload-time = "2026-06-03T16:07:00.625Z" },
-    { url = "https://files.pythonhosted.org/packages/12/a7/c23db30dc19ad07a188eeeab48fd8d676554e8647dac6e9dbf62be0f82f1/litert_lm_api-0.13.1-py3-none-manylinux_2_27_aarch64.whl", hash = "sha256:4092c4f7ad75fb23d83bc5b00a9aa6896a19d75f148515efeef0d079ba22ef74", size = 42542393, upload-time = "2026-06-03T16:07:05.619Z" },
-    { url = "https://files.pythonhosted.org/packages/36/27/bb0c2e084d59938bc12f960db50e7e8e056337ed286f31468aaa39bc9d9a/litert_lm_api-0.13.1-py3-none-manylinux_2_27_x86_64.whl", hash = "sha256:b981d55e057be9664f30670d5c1faa6e738ad516a2617dbdac10dc6b5b409cca", size = 44865394, upload-time = "2026-06-03T16:07:15.086Z" },
-    { url = "https://files.pythonhosted.org/packages/8e/0f/8edfe4800c95e230928529e5c6f305646ce3b7f497bad745a54a8127a52e/litert_lm_api-0.13.1-py3-none-win_amd64.whl", hash = "sha256:e2d6b03a9e38e17bebea9a74cc8a68553a05a5fee13a5b353be42209962ac9be", size = 26203707, upload-time = "2026-06-03T16:07:09.705Z" },
+    { url = "https://files.pythonhosted.org/packages/39/83/af857a6731c85c8123117af415d850d896655153ad43bb99d33522535875/litert_lm_api-0.14.0-py3-none-android_23_arm64_v8a.whl", hash = "sha256:4704eb40931dbe4a9133bf916aecf1aecad1e3214ab9ba0838c2b6f681e03d2a", size = 13415643, upload-time = "2026-07-08T18:01:29.825Z" },
+    { url = "https://files.pythonhosted.org/packages/b0/bb/a78ccde48e407544d37ac926fde13af058ee41f585a40a3abb275e9e3780/litert_lm_api-0.14.0-py3-none-android_23_x86_64.whl", hash = "sha256:99816906f397c156bc56ed140101e99d53782e4e7fa4b26db680f40074d73577", size = 14436124, upload-time = "2026-07-08T18:01:25.834Z" },
+    { url = "https://files.pythonhosted.org/packages/0e/ac/1fd99e239028ab8ec3226b954c94e5111ab7081af4adf42b8e75c2581af3/litert_lm_api-0.14.0-py3-none-macosx_12_0_arm64.whl", hash = "sha256:0a92084f55004b521074b06e024cbac1a2c15489d42ee9e4ca319462bd7c495f", size = 21190074, upload-time = "2026-07-08T18:01:39.246Z" },
+    { url = "https://files.pythonhosted.org/packages/f8/41/13da5ec4af33394c8bd1138f0ba87776b5fd6e0ba8124973ccde44bbc05c/litert_lm_api-0.14.0-py3-none-manylinux_2_27_aarch64.whl", hash = "sha256:d2641573a247fa4f07b6f0212d82494b0e4cc6ac521e4b9cc9b34081dfb6f7d1", size = 43501442, upload-time = "2026-07-08T18:01:35.01Z" },
+    { url = "https://files.pythonhosted.org/packages/7a/22/9f40a16fa74b0410658ec1d7372fd52b5a6a6b9ef5864845632538a756d2/litert_lm_api-0.14.0-py3-none-manylinux_2_27_x86_64.whl", hash = "sha256:e772afc3f71ccd9d1511dd52017076d9671807dc47c619d1ea82149701cf6312", size = 45839008, upload-time = "2026-07-08T18:01:22.189Z" },
+    { url = "https://files.pythonhosted.org/packages/d9/ef/36831a18c29b5a8f8283578c77fdd0c823dc8851b05f7a12689ac603c599/litert_lm_api-0.14.0-py3-none-win_amd64.whl", hash = "sha256:b20c555a74f1e15bbe988d86a2fb7316603779fbb71a3c085aa9dbcd5d39c2e3", size = 26615461, upload-time = "2026-07-08T18:01:43.33Z" },
 ]
 
 [[package]]
 name = "litert-lm-builder"
-version = "0.13.0"
+version = "0.14.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "absl-py" },
@@ -579,7 +575,7 @@ dependencies = [
     { name = "tomli" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/24/5c/6396a8994ebdf42a8cceb069f6e0014c578b67cd4d2b70ebba33e533d8f5/litert_lm_builder-0.13.0-py3-none-any.whl", hash = "sha256:b3a46968a2bf49cd29059a30a76c0738ae0b90c39c7c1480db5060733321d757", size = 29421, upload-time = "2026-06-02T17:44:27.556Z" },
+    { url = "https://files.pythonhosted.org/packages/e9/0f/de795cfb1915075158d38d6dc7f11b1202a18a58dd24e31e7cb842f471f2/litert_lm_builder-0.14.0-py3-none-any.whl", hash = "sha256:c1d99841f7ed56d4e28c7b120fda240c0882eb4dbe746962ffe36f97b12dc6aa", size = 30661, upload-time = "2026-07-01T23:10:53.121Z" },
 ]
 
 [[package]]
@@ -851,7 +847,7 @@ dependencies = [
 requires-dist = [
     { name = "fastapi", specifier = ">=0.135.3" },
     { name = "kokoro-onnx", marker = "sys_platform == 'linux'", specifier = ">=0.5.0" },
-    { name = "litert-lm", specifier = ">=0.13.1" },
+    { name = "litert-lm", specifier = ">=0.14.0" },
     { name = "misaki", extras = ["en"], marker = "sys_platform == 'darwin'", specifier = ">=0.9.4" },
     { name = "mlx-audio", marker = "sys_platform == 'darwin'", specifier = ">=0.4.2" },
     { name = "num2words", marker = "sys_platform == 'darwin'", specifier = ">=0.5.14" },
@@ -1083,6 +1079,18 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/74/93/7baea19427dcfbe1e5a372d81473250b379f04b1bd3c4c5ff825e2327202/pyyaml-6.0.3-cp312-cp312-win32.whl", hash = "sha256:96b533f0e99f6579b3d4d4995707cf36df9100d67e0c8303a0c55b27b5f99bc5", size = 137658, upload-time = "2025-09-25T21:32:20.209Z" },
     { url = "https://files.pythonhosted.org/packages/86/bf/899e81e4cce32febab4fb42bb97dcdf66bc135272882d1987881a4b519e9/pyyaml-6.0.3-cp312-cp312-win_amd64.whl", hash = "sha256:5fcd34e47f6e0b794d17de1b4ff496c00986e1c83f7ab2fb8fcfe9616ff7477b", size = 154003, upload-time = "2025-09-25T21:32:21.167Z" },
     { url = "https://files.pythonhosted.org/packages/1a/08/67bd04656199bbb51dbed1439b7f27601dfb576fb864099c7ef0c3e55531/pyyaml-6.0.3-cp312-cp312-win_arm64.whl", hash = "sha256:64386e5e707d03a7e172c0701abfb7e10f0fb753ee1d773128192742712a98fd", size = 140344, upload-time = "2025-09-25T21:32:22.617Z" },
+]
+
+[[package]]
+name = "questionary"
+version = "2.1.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "prompt-toolkit" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/f6/45/eafb0bba0f9988f6a2520f9ca2df2c82ddfa8d67c95d6625452e97b204a5/questionary-2.1.1.tar.gz", hash = "sha256:3d7e980292bb0107abaa79c68dd3eee3c561b83a0f89ae482860b181c8bd412d", size = 25845, upload-time = "2025-08-28T19:00:20.851Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3c/26/1062c7ec1b053db9e499b4d2d5bc231743201b74051c973dadeac80a8f43/questionary-2.1.1-py3-none-any.whl", hash = "sha256:a51af13f345f1cdea62347589fbb6df3b290306ab8930713bfae4d475a7d4a59", size = 36753, upload-time = "2025-08-28T19:00:19.56Z" },
 ]
 
 [[package]]
