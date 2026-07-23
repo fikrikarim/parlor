@@ -50,14 +50,24 @@ tts_backend = None
 def load_models():
     global engine, tts_backend
     print(f"Loading Gemma 4 E2B from {MODEL_PATH}...")
-    engine = litert_lm.Engine(
-        MODEL_PATH,
-        backend=litert_lm.Backend.GPU,
-        vision_backend=litert_lm.Backend.GPU,
-        audio_backend=litert_lm.Backend.CPU,
-    )
-    engine.__enter__()
-    print("Engine loaded.")
+
+    # Try GPU first, fall back to CPU if the GPU driver is unavailable
+    for backend_label, backend in [("GPU", litert_lm.Backend.GPU()), ("CPU", litert_lm.Backend.CPU())]:
+        try:
+            engine = litert_lm.Engine(
+                MODEL_PATH,
+                backend=backend,
+                vision_backend=backend,
+                audio_backend=litert_lm.Backend.CPU(),
+            )
+            engine.__enter__()
+            print(f"Engine loaded (backend={backend_label}).")
+            break
+        except Exception as e:
+            print(f"Backend {backend_label} failed: {e}")
+            engine = None
+    else:
+        raise RuntimeError("Failed to create engine with any backend")
 
     tts_backend = tts.load()
 
