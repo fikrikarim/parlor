@@ -19,11 +19,12 @@ still needs human testing. Delete this file before merging.
    (official Google QAT q4_0 GGUF + mmproj). The server owns conversation
    history; prefix caching makes re-sending it cheap. Real barge-in abort.
    litert-lm can be restored by reverting two commits (`2284193`, `37caaaf`).
-5. **Turn detection** — after live testing showed Gemma E2B cannot reliably
-   judge FINISHED/WAIT (in inline-marker or separate-request form), judgment
-   moved to pipecat's smart-turn-v3 audio classifier (~25ms CPU). The LLM
-   prompt now carries no format instructions at all. `TURN_MODE=marker` and
-   `two_phase` remain for comparison.
+5. **Turn detection** — judgment belongs to pipecat's smart-turn-v3.2 audio
+   classifier (~20ms CPU), and the LLM prompt carries no format instructions
+   at all. The inline-marker and separate-request variants were measured
+   (`benchmarks/turnbench.py`) at chance accuracy on E2B, E4B *and* 12B, so
+   `TURN_MODE` is gone and only the classifier path remains. The benchmark
+   still reproduces both variants against any future model.
 6. **Live-session fixes** — history poisoning by invalid audio, echo
    parroting (AEC reference path + sustained-speech barge-in), capture leak.
 

@@ -1037,8 +1037,8 @@ async function init() {
     getStream: async () => new MediaStream(mediaStream.getAudioTracks()),
     positiveSpeechThreshold: 0.5,
     negativeSpeechThreshold: 0.25,
-    // Short redemption for fast turn-taking; the LLM's turn markers catch
-    // the cases where the user was merely pausing (see SYSTEM_PROMPT).
+    // Short redemption for fast turn-taking; the server's smart-turn
+    // classifier catches the cases where the user was merely pausing.
     redemptionMs: 200,
     minSpeechMs: 300,
     preSpeechPadMs: 300,

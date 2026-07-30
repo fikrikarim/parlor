@@ -38,6 +38,7 @@ import contextlib
 import io
 import json
 import os
+import re
 import sys
 import time
 import urllib.parse
@@ -67,6 +68,59 @@ MODELS = {
 }
 
 BENCH_PORT = "8099"  # not 8081, so a dev server can keep running alongside
+
+# The two LLM-judged variants server.py used to ship as TURN_MODE=marker and
+# TURN_MODE=two_phase. They live here now: they lost badly enough to be worth
+# deleting from the server, but re-running them against the next Gemma is a
+# one-line change, so the prompts stay reproducible rather than lost to git.
+MARKER_SYSTEM_PROMPT = (
+    "You are a friendly, conversational AI assistant. The user talks to you "
+    "through a microphone and may show you their camera. Your reply is spoken "
+    "aloud, so write plain conversational text: 1-4 short sentences, no formatting.\n"
+    "\n"
+    "Your reply MUST start with exactly one of these words on its own line, "
+    "judging the user's speech:\n"
+    "- FINISHED — the user completed their thought. Continue with your spoken "
+    "response on the next line.\n"
+    "- WAIT — the user has not finished: they were cut off mid-sentence or are "
+    "pausing to think. Say nothing else and let them continue.\n"
+    "Also reply WAIT if the audio is just an echo of your own previous reply "
+    "(the microphone picking up your voice) or is silence or noise.\n"
+    "\n"
+    "If the user sent audio, end your reply with a new line:\n"
+    "###TRANSCRIPT: the exact words the user said\n"
+    "\n"
+    "Examples:\n"
+    'User audio: "What\'s your favorite color?"\n'
+    "You: FINISHED\n"
+    "I really like deep blue. What about you?\n"
+    "###TRANSCRIPT: What's your favorite color?\n"
+    "\n"
+    'User audio: "So the thing I wanted to say is"\n'
+    "You: WAIT\n"
+    "\n"
+    'User audio: "Hmm, let me think about that for a second."\n'
+    "You: WAIT\n"
+)
+
+MARKER_INSTRUCTION = (
+    "The user just spoke to you. Start with FINISHED or WAIT, then respond to "
+    "what they said. End with the ###TRANSCRIPT line."
+)
+
+DECISION_PROMPT = (
+    "The user just spoke. Judge ONLY whether they finished their thought — "
+    "do not answer them yet. Examples:\n"
+    '"What is your favorite food?" -> FINISHED\n'
+    '"I moved here last year and I want to know how I can make more friends." -> FINISHED\n'
+    '"So the thing I wanted to ask is" -> WAIT\n'
+    '"Hmm, let me think about that." -> WAIT\n'
+    "Reply with exactly one word: FINISHED or WAIT."
+)
+
+# Close variants ("FINISH", trailing colon, markdown wrap) count too — they
+# never open a real response in uppercase.
+MARKER_RE = re.compile(r"[\s*_]*(FINISHED|FINISH|WAITING|WAIT)\b[:.]?[\s*_]*")
 
 
 # ── clip fetching ─────────────────────────────────────────────────────────
@@ -158,33 +212,32 @@ def judge_smart(detector, audio: np.ndarray, _b64: str) -> tuple[bool, float]:
 
 
 def judge_marker(server, _audio, b64: str) -> tuple[bool, float]:
-    """Production `marker` path, stopped after the marker token: the reply
-    text costs the same whichever way the marker went, so decision latency
-    is what turn-taking actually feels."""
+    """Stopped after the marker token: the reply text costs the same
+    whichever way the marker went, so decision latency is what turn-taking
+    actually feels."""
     messages = [
-        {"role": "system", "content": server.SYSTEM_PROMPT},
+        {"role": "system", "content": MARKER_SYSTEM_PROMPT},
         {"role": "user", "content": [
-            server.audio_part(b64),
-            server.text_part(server.marker_instruction({}, False, True))]},
+            server.audio_part(b64), server.text_part(MARKER_INSTRUCTION)]},
     ]
-    return _marker_verdict(server, server.chat_blocking(messages, max_tokens=8))
+    return _marker_verdict(server.chat_blocking(messages, max_tokens=8))
 
 
 def judge_two_phase(server, _audio, b64: str) -> tuple[bool, float]:
     messages = [
-        {"role": "system", "content": server.SYSTEM_PROMPT_TWO_PHASE},
+        {"role": "system", "content": server.SYSTEM_PROMPT},
         {"role": "user", "content": [
-            server.audio_part(b64), server.text_part(server.DECISION_PROMPT)]},
+            server.audio_part(b64), server.text_part(DECISION_PROMPT)]},
     ]
-    return _marker_verdict(server, server.chat_blocking(messages, max_tokens=6))
+    return _marker_verdict(server.chat_blocking(messages, max_tokens=6))
 
 
-def _marker_verdict(server, text: str) -> tuple[bool, float]:
-    """A missing or garbled marker counts as 'complete' — that is what
-    StreamParser falls back to in production."""
-    match = server.MARKER_RE.match(text.strip())
-    kind = server.MARKER_KINDS.get(match.group(1)) if match else None
-    return kind != "incomplete", 1.0 if kind is None else float(kind == "complete")
+def _marker_verdict(text: str) -> tuple[bool, float]:
+    """A missing or garbled marker counts as 'complete' — the fallback the
+    old StreamParser used when no marker arrived."""
+    match = MARKER_RE.match(text.strip())
+    complete = not match or match.group(1).startswith("FINISH")
+    return complete, float(complete)
 
 
 JUDGES = {"smart": judge_smart, "marker": judge_marker, "two_phase": judge_two_phase}

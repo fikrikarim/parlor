@@ -54,94 +54,30 @@ LLAMA_PORT = int(os.environ.get("LLAMA_PORT", "8081"))
 LLAMA_URL = os.environ.get("LLAMA_SERVER_URL", "")  # set to use an external server
 LLAMA_CTX = int(os.environ.get("LLAMA_CTX", "16384"))
 
-# The reply streams straight into TTS, so the format is: response first
-# (sentences are spoken as they decode), transcript last (it never delays
-# first audio). Incomplete turns cost only a couple of decode tokens.
+# Turn completeness is judged by the smart-turn audio classifier before the
+# LLM is involved, so the prompt carries no FINISHED/WAIT machinery at all.
+# Asking Gemma to judge it instead scores at chance on audio — see
+# benchmarks/turnbench.py, which still reproduces those two variants.
 SYSTEM_PROMPT = (
-    "You are a friendly, conversational AI assistant. The user talks to you "
-    "through a microphone and may show you their camera. Your reply is spoken "
-    "aloud, so write plain conversational text: 1-4 short sentences, no formatting.\n"
-    "\n"
-    "Your reply MUST start with exactly one of these words on its own line, "
-    "judging the user's speech:\n"
-    "- FINISHED — the user completed their thought. Continue with your spoken "
-    "response on the next line.\n"
-    "- WAIT — the user has not finished: they were cut off mid-sentence or are "
-    "pausing to think. Say nothing else and let them continue.\n"
-    "Also reply WAIT if the audio is just an echo of your own previous reply "
-    "(the microphone picking up your voice) or is silence or noise.\n"
-    "\n"
-    "If the user sent audio, end your reply with a new line:\n"
-    "###TRANSCRIPT: the exact words the user said\n"
-    "\n"
-    "Examples:\n"
-    'User audio: "What\'s your favorite color?"\n'
-    "You: FINISHED\n"
-    "I really like deep blue. What about you?\n"
-    "###TRANSCRIPT: What's your favorite color?\n"
-    "\n"
-    'User audio with camera image: "Is this too much salt?"\n'
-    "You: FINISHED\n"
-    "That looks like a good amount for a pot that size.\n"
-    "###TRANSCRIPT: Is this too much salt?\n"
-    "\n"
-    'User audio: "So the thing I wanted to say is"\n'
-    "You: WAIT\n"
-    "\n"
-    'User audio: "Hmm, let me think about that for a second."\n'
-    "You: WAIT\n"
-)
-
-NUDGE_PROMPT = (
-    "(The user went quiet without finishing their thought. Reply FINISHED, then "
-    "in one short, warm sentence encourage them to continue. No transcript line.)"
-)
-
-# How turn completeness ("did the user finish their thought?") is judged:
-#   smart     — the smart-turn-v3 audio classifier decides in ~30ms and the
-#               LLM never sees marker instructions at all (default; E2B judged
-#               too unreliably at this in live testing)
-#   marker    — the LLM starts every reply with FINISHED/WAIT
-#   two_phase — a separate tiny LLM decision request, then a clean response
-TURN_MODE = os.environ.get("TURN_MODE", "smart")  # smart | marker | two_phase
-
-SYSTEM_PROMPT_TWO_PHASE = (
     "You are a friendly, conversational AI assistant. The user talks to you "
     "through a microphone and may show you their camera. Your replies are "
     "spoken aloud, so write plain conversational text without formatting."
 )
 
-DECISION_PROMPT = (
-    "The user just spoke. Judge ONLY whether they finished their thought — "
-    "do not answer them yet. Examples:\n"
-    '"What is your favorite food?" -> FINISHED\n'
-    '"I moved here last year and I want to know how I can make more friends." -> FINISHED\n'
-    '"So the thing I wanted to ask is" -> WAIT\n'
-    '"Hmm, let me think about that." -> WAIT\n'
-    "Reply with exactly one word: FINISHED or WAIT."
-)
-
+# The reply streams straight into TTS, so the format is: response first
+# (sentences are spoken as they decode), transcript last (it never delays
+# first audio).
 RESPOND_PROMPT = (
     "Respond to what the user said in their audio message: 1-4 short "
     "sentences, spoken aloud.{camera} Then end your reply with a new line: "
     "###TRANSCRIPT: followed by the exact words the user said."
 )
 
-NUDGE_PROMPT_TWO_PHASE = (
+NUDGE_PROMPT = (
     "(The user went quiet without finishing their thought. In one short, warm "
     "sentence, encourage them to continue. No transcript line.)"
 )
 
-# Accept close marker variants ("FINISH", trailing colon, markdown wrap) —
-# they never appear as the first word of a real response in uppercase.
-MARKER_RE = re.compile(r"[\s*_]*(FINISHED|FINISH|WAITING|WAIT)\b[:.]?[\s*_]*")
-MARKER_KINDS = {
-    "FINISHED": "complete",
-    "FINISH": "complete",
-    "WAIT": "incomplete_short",
-    "WAITING": "incomplete_short",
-}
-MARKER_HOLDBACK = 10  # chars of non-marker text before we give up waiting
 TRANSCRIPT_TAG = "###TRANSCRIPT:"
 SENTENCE_END_RE = re.compile(r"[.!?]+\s")
 MAX_OUTPUT_TOKENS = 256
@@ -156,7 +92,7 @@ _DONE = object()
 
 llama_proc = None
 tts_backend = None
-detector = None  # smart-turn classifier (TURN_MODE=smart)
+detector = None  # smart-turn end-of-turn classifier
 
 
 def resolve_model_paths() -> tuple[str, str]:
@@ -221,9 +157,8 @@ def start_llama_server():
 def load_models():
     global tts_backend, detector
     start_llama_server()
-    if TURN_MODE == "smart":
-        from turn_detector import TurnDetector
-        detector = TurnDetector()
+    from turn_detector import TurnDetector
+    detector = TurnDetector()
     tts_backend = tts.load()
 
 
@@ -375,8 +310,7 @@ def estimate_tokens(messages: list) -> int:
 # ── streaming turn parser (unchanged semantics from the litert version) ───
 
 class StreamParser:
-    """Incrementally parses 'FINISHED\\n<response>\\n###TRANSCRIPT: <words>',
-    where the first line may instead be a lone WAIT turn marker.
+    """Incrementally parses '<response>\\n###TRANSCRIPT: <words>'.
 
     feed() returns complete response sentences as they become available;
     finalize() returns the trailing partial sentence and the transcript.
@@ -385,43 +319,13 @@ class StreamParser:
     # Hold back enough of the tail to never TTS a partially-arrived tag.
     TAG_HOLDBACK = len(TRANSCRIPT_TAG) + 2
 
-    def __init__(self, expect_marker: bool = True):
-        # Without a marker (two-phase mode) everything is response text.
-        self.kind = None if expect_marker else "complete"
+    def __init__(self):
         self.response = ""
         self.transcript = ""
-        self._pending = ""  # text held until marker-vs-response is decided
         self._in_transcript = False
         self._emitted = 0
 
-    def _decide_kind(self, final: bool) -> tuple[str, str]:
-        """Returns (kind, response remainder) — kind '' means keep holding."""
-        m = MARKER_RE.match(self._pending)
-        if m:
-            if not final and m.end() == len(self._pending):
-                # "FINISH" may still grow into "FINISHED" — deciding now would
-                # leave the trailing "ED" to be spoken as response text.
-                return "", ""
-            return MARKER_KINDS[m.group(1)], self._pending[m.end():]
-        stripped = self._pending.lstrip()
-        if not final and len(stripped) < MARKER_HOLDBACK:
-            return "", ""
-        # Model skipped the marker — treat everything as the response.
-        return "complete", stripped
-
-    def feed(self, delta: str, final: bool = False) -> list[str]:
-        if self.kind is None:
-            self._pending += delta
-            kind, remainder = self._decide_kind(final)
-            if not kind:
-                return []
-            self.kind = kind
-            if kind != "complete":
-                return []
-            delta, self._pending = remainder.lstrip(), ""
-        elif self.kind != "complete":
-            return []  # marker turn: ignore any trailing text
-
+    def feed(self, delta: str) -> list[str]:
         if self._in_transcript:
             self.transcript += delta
             return []
@@ -455,7 +359,7 @@ class StreamParser:
         return sentences
 
     def finalize(self) -> tuple[list[str], str | None]:
-        sentences = self.feed("", final=True)
+        sentences = self.feed("")
         # Cut any (possibly truncated) transcript tag — never speak it.
         tail = re.split(r"#{2,}", self.response[self._emitted:])[0].strip()
         transcript = self.transcript.strip() or None
@@ -465,14 +369,13 @@ class StreamParser:
 # ── turn execution ────────────────────────────────────────────────────────
 
 async def run_turn(ws: WebSocket, messages: list, interrupted: asyncio.Event,
-                   active: dict, expect_marker: bool = True,
-                   extra_timings: dict | None = None) -> str:
+                   active: dict) -> str:
     """Stream one model turn: decode → sentences → TTS, all pipelined.
     Returns the raw generated text (stored verbatim in history so the next
     request gets a full prefix-cache hit)."""
     loop = asyncio.get_event_loop()
     t0 = time.time()
-    timings = dict(extra_timings or {})
+    timings: dict = {}
 
     chunk_q: asyncio.Queue = asyncio.Queue()
     stream = ChatStream(messages, MAX_OUTPUT_TOKENS)
@@ -520,7 +423,7 @@ async def run_turn(ws: WebSocket, messages: list, interrupted: asyncio.Event,
             audio_state["chunks"] += 1
 
     tts_task = asyncio.create_task(tts_worker())
-    parser = StreamParser(expect_marker=expect_marker)
+    parser = StreamParser()
     tts_started_at = None
 
     async def dispatch(sentences: list[str]):
@@ -546,13 +449,6 @@ async def run_turn(ws: WebSocket, messages: list, interrupted: asyncio.Event,
         tail, transcript = parser.finalize()
         timings["llm_time"] = round(time.time() - t0, 3)
         timings["decode_s"] = round(timings["llm_time"] - timings.get("prefill_s", 0), 3)
-
-        if parser.kind in ("incomplete_short", "incomplete_long"):
-            kind = parser.kind.removeprefix("incomplete_")
-            print(f"LLM ({timings['llm_time']:.2f}s) turn incomplete ({kind})")
-            if not interrupted.is_set():
-                await ws.send_text(json.dumps({"type": "turn_incomplete", "kind": kind, **timings}))
-            return raw["text"]
 
         if not interrupted.is_set():
             await dispatch(tail)
@@ -623,16 +519,12 @@ def wav_to_float32(b64: str) -> np.ndarray:
     return pcm.astype(np.float32) / 32768.0
 
 
-def marker_instruction(msg: dict, has_image: bool, has_audio: bool) -> str:
+def turn_instruction(msg: dict, has_image: bool, has_audio: bool) -> str:
     if msg.get("type") == "nudge":
-        return NUDGE_PROMPT if TURN_MODE == "marker" else NUDGE_PROMPT_TWO_PHASE
+        return NUDGE_PROMPT
     if has_audio:
-        base = ("The user just spoke while showing their camera. Start with FINISHED or WAIT, "
-                "then respond to what they said, referencing what you see if relevant."
-                if has_image else
-                "The user just spoke to you. Start with FINISHED or WAIT, then respond to "
-                "what they said.")
-        return base + " End with the ###TRANSCRIPT line."
+        camera = " Mention what you see on their camera if relevant." if has_image else ""
+        return RESPOND_PROMPT.format(camera=camera)
     if has_image:
         return "The user is showing you their camera. Describe what you see."
     return msg.get("text", "Hello!")
@@ -642,8 +534,7 @@ def marker_instruction(msg: dict, has_image: bool, has_audio: bool) -> str:
 async def websocket_endpoint(ws: WebSocket):
     await ws.accept()
 
-    system = SYSTEM_PROMPT if TURN_MODE == "marker" else SYSTEM_PROMPT_TWO_PHASE
-    history: list = [{"role": "system", "content": system}]
+    history: list = [{"role": "system", "content": SYSTEM_PROMPT}]
 
     interrupted = asyncio.Event()
     active = {"stream": None}
@@ -722,10 +613,10 @@ async def websocket_endpoint(ws: WebSocket):
                 }))
                 continue
 
-            # Smart mode: the audio classifier judges completeness before the
-            # LLM is involved at all. Incomplete → hold the segments (they stay
-            # in the next turn's content AND warm in the cache) and wait.
-            if TURN_MODE == "smart" and has_audio and msg.get("type") != "nudge":
+            # The audio classifier judges completeness before the LLM is
+            # involved at all. Incomplete → hold the segments (they stay in
+            # the next turn's content AND warm in the cache) and wait.
+            if has_audio and msg.get("type") != "nudge":
                 pcm = np.concatenate([wav_to_float32(b) for b in audio_b64s])
                 t0d = time.time()
                 complete, prob = await asyncio.get_event_loop().run_in_executor(
@@ -747,43 +638,9 @@ async def websocket_endpoint(ws: WebSocket):
             held_audio = []
 
             try:
-                if TURN_MODE == "two_phase" and has_audio:
-                    decision_messages = history + [
-                        {"role": "user", "content": content + [text_part(DECISION_PROMPT)]}]
-                    t0 = time.time()
-                    verdict_text = await asyncio.get_event_loop().run_in_executor(
-                        None, lambda: chat_blocking(decision_messages, max_tokens=6))
-                    decision_s = round(time.time() - t0, 3)
-                    print(f"Decision ({decision_s:.2f}s): {verdict_text.strip()!r}")
-                    if interrupted.is_set():
-                        continue
-                    if "WAIT" in verdict_text.upper():
-                        # Keep the unfinished audio in history — it is context
-                        # for the user's continuation.
-                        history.append(decision_messages[-1])
-                        history.append({"role": "assistant", "content": "WAIT"})
-                        await ws.send_text(json.dumps({
-                            "type": "turn_incomplete", "kind": "short",
-                            "decision_s": decision_s,
-                        }))
-                        continue
-                    camera = (" Mention what you see on their camera if relevant."
-                              if has_image else "")
-                    user_msg = {"role": "user",
-                                "content": content + [text_part(RESPOND_PROMPT.format(camera=camera))]}
-                    raw_text = await run_turn(ws, history + [user_msg], interrupted, active,
-                                              expect_marker=False,
-                                              extra_timings={"decision_s": decision_s})
-                else:
-                    if TURN_MODE == "smart" and has_audio and msg.get("type") != "nudge":
-                        camera = (" Mention what you see on their camera if relevant."
-                                  if has_image else "")
-                        instruction = RESPOND_PROMPT.format(camera=camera)
-                    else:
-                        instruction = marker_instruction(msg, has_image, has_audio)
-                    user_msg = {"role": "user", "content": content + [text_part(instruction)]}
-                    raw_text = await run_turn(ws, history + [user_msg], interrupted, active,
-                                              expect_marker=(TURN_MODE == "marker"))
+                instruction = turn_instruction(msg, has_image, has_audio)
+                user_msg = {"role": "user", "content": content + [text_part(instruction)]}
+                raw_text = await run_turn(ws, history + [user_msg], interrupted, active)
                 # Store the turn verbatim (same bytes → full prefix-cache hit
                 # on the next request). Never store a turn the model produced
                 # nothing for — a degenerate message poisons all later requests.

@@ -74,7 +74,6 @@ Models are downloaded automatically on first run (~4 GB for Gemma 4 E2B QAT + it
 | `LLAMA_CTX`        | `16384`                        | llama.cpp context size. The server drops the oldest exchanges shortly before it fills |
 | `LLAMA_PORT`       | `8081`                         | Port for the spawned llama-server              |
 | `LLAMA_SERVER_URL` | (spawn our own)                | Use an already-running llama-server instead    |
-| `TURN_MODE`        | `marker`                       | `two_phase` splits each turn into a decision request + a clean response request |
 
 ## Performance (Apple M3 Pro)
 
