@@ -50,22 +50,19 @@ import soundfile as sf
 
 import fixtures
 
+# The bench port must be in the env BEFORE parlor.llama is imported — it
+# freezes LLAMA_PORT into a module constant at import time. Not 8081, so a
+# dev server can keep running alongside (setdefault matches tagbench and
+# lets an explicit env override through).
+BENCH_PORT = "8099"
+os.environ.setdefault("LLAMA_PORT", BENCH_PORT)
+
+from parlor.llama import MODELS  # GGUF repo/weights/mmproj per model size
+
 DATASET = "pipecat-ai/smart-turn-data-v3.2-test"
 FILTER_URL = "https://datasets-server.huggingface.co/filter"
 CLIPS_DIR = Path(__file__).parent / "fixtures" / "turn"
 MANIFEST = CLIPS_DIR / "manifest.json"
-
-# GGUF repo, weights, mmproj — all three are Google's official QAT q4_0.
-MODELS = {
-    "e2b": ("google/gemma-4-E2B-it-qat-q4_0-gguf",
-            "gemma-4-E2B_q4_0-it.gguf", "gemma-4-E2B-it-mmproj.gguf"),
-    "e4b": ("google/gemma-4-E4B-it-qat-q4_0-gguf",
-            "gemma-4-E4B_q4_0-it.gguf", "gemma-4-E4B-it-mmproj.gguf"),
-    "12b": ("google/gemma-4-12B-it-qat-q4_0-gguf",
-            "gemma-4-12b-it-qat-q4_0.gguf", "mmproj-gemma-4-12b-it-qat-q4_0.gguf"),
-}
-
-BENCH_PORT = "8099"  # not 8081, so a dev server can keep running alongside
 
 # The two LLM-judged variants server.py used to ship as TURN_MODE=marker and
 # TURN_MODE=two_phase. They live here now: they lost badly enough to be worth
@@ -345,9 +342,8 @@ def main() -> None:
         repo, weights, mmproj = MODELS[args.model]
         os.environ["MODEL_PATH"] = hf_hub_download(repo, weights, local_files_only=True)
         os.environ["MMPROJ_PATH"] = hf_hub_download(repo, mmproj, local_files_only=True)
-        os.environ["LLAMA_PORT"] = BENCH_PORT
 
-    global llama, pipeline, server  # after the env above; llama reads LLAMA_PORT at import
+    global llama, pipeline, server  # deferred — pulls in the whole app
     from parlor import llama, pipeline, server
     detector = None
     if "smart" in modes:

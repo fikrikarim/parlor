@@ -283,8 +283,26 @@ async def websocket_endpoint(ws: WebSocket):
     async def receiver():
         try:
             while True:
-                raw = await ws.receive_text()
-                msg = json.loads(raw)
+                try:
+                    raw = await ws.receive_text()
+                except DISCONNECT_ERRORS:
+                    raise
+                except KeyError:
+                    # A binary frame: Starlette's receive_text() KeyErrors
+                    # on a message with no "text". Our client never sends
+                    # one — skip it, don't die.
+                    print("Ignoring binary client frame")
+                    continue
+                try:
+                    msg = json.loads(raw)
+                except Exception:
+                    msg = None
+                if not isinstance(msg, dict):
+                    # One malformed frame must not end the session (an
+                    # uncaught error here would enqueue None and stop the
+                    # main loop, with the exception never even surfaced).
+                    print(f"Ignoring malformed client message: {raw[:100]!r}")
+                    continue
                 if msg.get("type") == "interrupt":
                     interrupted.set()
                     stream = active.get("stream")

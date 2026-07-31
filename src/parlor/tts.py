@@ -6,6 +6,8 @@ import sys
 
 import numpy as np
 
+from parlor import hf
+
 
 def _is_apple_silicon() -> bool:
     return sys.platform == "darwin" and platform.machine() == "arm64"
@@ -41,10 +43,9 @@ class ONNXBackend(TTSBackend):
 
     def __init__(self):
         import kokoro_onnx
-        from huggingface_hub import hf_hub_download
 
-        model_path = hf_hub_download("fastrtc/kokoro-onnx", "kokoro-v1.0.onnx")
-        voices_path = hf_hub_download("fastrtc/kokoro-onnx", "voices-v1.0.bin")
+        model_path = hf.download("fastrtc/kokoro-onnx", "kokoro-v1.0.onnx")
+        voices_path = hf.download("fastrtc/kokoro-onnx", "voices-v1.0.bin")
 
         self._model = kokoro_onnx.Kokoro(model_path, voices_path)
         self.sample_rate = 24000

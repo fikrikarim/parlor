@@ -10,12 +10,14 @@ let ws, mediaStream, myvad;
 let cameraEnabled = true;
 let audioCtx;
 let state = 'loading';
+let startupFailed = false;
 let ignoreIncomingAudio = false;
 
 // Streaming audio playback state
 let streamSampleRate = 24000;
 let streamNextTime = 0;         // When to schedule next chunk
 let streamSources = [];         // Active AudioBufferSourceNodes
+let streamEnded = false;        // audio_end received — no more chunks coming
 
 // Per-state [glow, glow-dim]. Resolved values, not nested var(): setState
 // writes them into CSS custom properties and the waveform paints with them.
@@ -30,7 +32,6 @@ const STATE_COLORS = {
 let analyser, micSource;
 const BAR_COUNT = 40;
 const BAR_GAP = 3;
-let waveformRAF;
 let ambientPhase = 0;
 
 function initWaveformCanvas() {
@@ -81,7 +82,7 @@ function drawWaveform() {
   }
 
   waveformCtx.globalAlpha = 1;
-  waveformRAF = requestAnimationFrame(drawWaveform);
+  requestAnimationFrame(drawWaveform);
 }
 
 // ── Dynamic glow intensity for speaking state ──
@@ -178,24 +179,44 @@ function wsSend(payload) {
   if (wsOpen()) ws.send(JSON.stringify(payload));
 }
 
+// A reconnect gets a brand-new server conversation — reset the per-turn
+// state with it. Half-resets bite: a surviving ignoreIncomingAudio silently
+// discards the new session's whole first turn, still-scheduled TTS from the
+// dead session keeps playing, and a stuck 'speaking' state pins the VAD at
+// the echo threshold. (State owned by a start function — streamEnded,
+// chunkSeq, preFrames — resets there, not here.)
+function resetSession() {
+  stopPlayback();
+  ignoreIncomingAudio = false;
+  speechActive = false;
+  uttFrames = [];
+  uttSamplesSent = 0;
+  phantomQuiet = 0;
+  bargeWindow = [];
+  framePrefetched = false;
+  serverHoldingAudio = false;
+  currentAssistantEl = null;
+  removePendingUserBubble();
+  delegationChips.forEach(chip => chip.remove());  // tasks died with the server
+  delegationChips.clear();
+  setSessionMode('conversation');
+  clearFlushTimer();
+  if (state !== 'loading') setState('listening');
+}
+
 function connect() {
   ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`);
   ws.onopen = () => {
+    if (startupFailed) return;  // a dead page must not read "Connected"
     setStatus('connected', 'Connected');
     if (state !== 'loading') setState('listening');
   };
   ws.onclose = () => {
-    // A reconnect gets a brand-new server conversation — reset per-turn state.
-    framePrefetched = false;
-    serverHoldingAudio = false;
-    removePendingUserBubble();
-    delegationChips.forEach(chip => chip.remove());  // tasks died with the server
-    delegationChips.clear();
-    setSessionMode('conversation');  // a reconnect starts a fresh session
-    clearFlushTimer();
+    resetSession();
     setStatus('disconnected', 'Disconnected');
     setTimeout(connect, 2000);
   };
+  ws.onerror = (e) => console.warn('WebSocket error', e);
   ws.onmessage = ({ data }) => {
     const msg = JSON.parse(data);
     if (msg.type === 'text_delta') {
@@ -233,7 +254,14 @@ function connect() {
         setAssistantMeta((t.ttfa_s ? `first audio ${t.ttfa_s}s · ` : '') + `model ${t.llm_time}s`);
       }
       currentAssistantEl = null;  // the next turn gets its own bubble
-      if (!msg.spoke) goListening();  // no audio will follow
+      if (!msg.spoke) {
+        // No audio will follow — and any still-scheduled audio belongs to
+        // a turn the server abandoned mid-stream (release_client after an
+        // error sends spoke:false even if chunks already played): stop it
+        // rather than announce a free floor over it.
+        stopPlayback();
+        goListening();
+      }
     } else if (msg.type === 'audio_start') {
       if (ignoreIncomingAudio) return;
       streamSampleRate = msg.sample_rate || 24000;
@@ -250,6 +278,8 @@ function connect() {
       }
       const meta = messagesDiv.querySelector('.msg.assistant:last-child .meta');
       if (meta) meta.textContent += ` · tts ${msg.tts_time}s`;
+      streamEnded = true;
+      endTurnIfDrained();
     } else if (msg.type === 'mode_changed') {
       setSessionMode(msg.mode);
     } else if (msg.type === 'delegation_started') {
@@ -421,7 +451,6 @@ async function startCamera() {
   mediaStream = new MediaStream();
   streams.forEach(r => { if (r.status === 'fulfilled') r.value.getTracks().forEach(t => mediaStream.addTrack(t)); });
   if (mediaStream.getVideoTracks().length) video.srcObject = mediaStream;
-  if (!mediaStream.getAudioTracks().length) { cameraEnabled = false; }
 }
 
 function captureFrame() {
@@ -514,7 +543,6 @@ function concatFrames(frames) {
 function sendSpeechChunk(upTo) {
   if (!wsOpen()) return;
   const chunk = concatFrames(uttFrames).subarray(uttSamplesSent, upTo);
-  if (chunk.length < 4800) return; // <300ms — not worth a priming request
   wsSend({ type: 'speech_chunk', seq: chunkSeq++, audio: float32ToWavBase64(chunk) });
   uttSamplesSent = upTo;
 }
@@ -647,6 +675,7 @@ function startStreamPlayback() {
   ensureAudioCtx();
   if (audioCtx.state === 'suspended') audioCtx.resume();
   streamNextTime = audioCtx.currentTime + 0.05; // Small initial buffer
+  streamEnded = false;
   speakingStartedAt = Date.now();
   setState('speaking');
 }
@@ -680,8 +709,19 @@ function queueAudioChunk(base64Pcm) {
   source.onended = () => {
     const idx = streamSources.indexOf(source);
     if (idx !== -1) streamSources.splice(idx, 1);
-    if (streamSources.length === 0 && state === 'speaking') goListening();
+    endTurnIfDrained();
   };
+}
+
+// The turn ends only when the server said no more chunks are coming
+// (audio_end) AND the last scheduled buffer finished playing. An empty
+// buffer alone just means the next sentence hasn't arrived yet — announcing
+// 'ready' early lets a delegation delivery talk over the rest of the reply
+// while the mic treats it as user speech. streamEnded also shields a fresh
+// turn from the previous turn's stopped sources, whose onended fires a tick
+// after startStreamPlayback.
+function endTurnIfDrained() {
+  if (streamEnded && streamSources.length === 0 && state === 'speaking') goListening();
 }
 
 // ── UI ──
@@ -711,6 +751,10 @@ async function init() {
   window.addEventListener('resize', initWaveformCanvas);
 
   await startCamera();
+  if (!mediaStream.getAudioTracks().length) {
+    // Without a mic the VAD would sit silent forever — fail loudly instead.
+    throw new Error('no microphone available (check browser permissions)');
+  }
   connect();
 
   myvad = await vad.MicVAD.new({
@@ -761,4 +805,19 @@ async function init() {
   console.log('VAD initialized and listening');
 }
 
-init();
+// Startup can fail (mic permission denied, VAD assets unreachable) — without
+// this the page sits on 'Loading...' forever with only an unhandled rejection.
+// connect() may already have opened the socket by then, so startupFailed also
+// keeps a late ws.onopen from overwriting the pill with "Connected".
+init().catch(err => {
+  console.error('Startup failed:', err);
+  startupFailed = true;
+  setStatus('disconnected', 'Startup failed');
+  // Label only, not setState: state must stay 'loading' — ws.onopen and
+  // resetSession key on it to keep a half-initialized page out of 'listening'.
+  stateText.textContent = 'Failed';
+  const bubble = addMessage('assistant', '');
+  bubble.textContent =
+    `Could not start: ${err?.message || err}. ` +
+    'Check microphone permissions and network access, then reload the page.';
+});

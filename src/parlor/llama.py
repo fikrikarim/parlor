@@ -9,8 +9,11 @@ import socket
 import subprocess
 import time
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from dotenv import load_dotenv
+
+from parlor import hf
 
 load_dotenv()  # config below is read at import time — .env must apply first
 
@@ -45,15 +48,7 @@ def resolve_model_paths() -> tuple[str, str]:
     if MODEL not in MODELS:
         raise RuntimeError(f"MODEL={MODEL!r} — expected one of {', '.join(MODELS)}")
     repo, gguf, mmproj_file = MODELS[MODEL]
-    from huggingface_hub import hf_hub_download
-    try:
-        model = model or hf_hub_download(repo, gguf)
-        mmproj = mmproj or hf_hub_download(repo, mmproj_file)
-    except Exception:  # offline — use the local cache
-        kw = {"local_files_only": True}
-        model = model or hf_hub_download(repo, gguf, **kw)
-        mmproj = mmproj or hf_hub_download(repo, mmproj_file, **kw)
-    return model, mmproj
+    return model or hf.download(repo, gguf), mmproj or hf.download(repo, mmproj_file)
 
 
 def model_label() -> str:
@@ -66,8 +61,16 @@ def model_label() -> str:
 
 def host_port() -> tuple[str, int]:
     if URL:
-        host, _, port = URL.split("//")[-1].partition(":")
-        return host, int(port or 80)
+        # urlsplit needs the '//' to see an authority; without it a bare
+        # 'myhost:8081' would parse as scheme 'myhost'. Handles a trailing
+        # path too ('http://myhost:8081/v1' is how these URLs are usually
+        # written).
+        u = urlsplit(URL if "//" in URL else "//" + URL)
+        if u.scheme == "https":
+            # Everything here speaks plain HTTPConnection — silently
+            # defaulting an https URL to port 80 would "work" wrongly.
+            raise RuntimeError("LLAMA_SERVER_URL must be http:// (no TLS)")
+        return u.hostname or "127.0.0.1", u.port or 80
     return "127.0.0.1", PORT
 
 
@@ -112,6 +115,11 @@ def start() -> None:
 def stop() -> None:
     if _proc:
         _proc.terminate()
+        try:
+            _proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            _proc.kill()  # a hung llama-server must not outlive us
+            _proc.wait()
 
 
 def _chat_body(messages: list, max_tokens: int, stream: bool) -> dict:

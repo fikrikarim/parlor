@@ -21,6 +21,12 @@ from pathlib import Path
 
 import pytest
 
+# Captured BEFORE any parlor import runs load_dotenv() (importing fixtures
+# below pulls in parlor.tts, and test modules import parlor.server during
+# collection): suite overrides must come from the shell, and once .env has
+# been folded into os.environ the two are indistinguishable.
+SHELL_ENV = dict(os.environ)
+
 import fixtures  # resolved via pythonpath = ["benchmarks"] (pyproject.toml)
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -138,12 +144,23 @@ def server(tmp_path_factory, reasoner_mock) -> Server:
     # coin flip and some run always loses one. Production recall at real
     # temperature is tagbench --production's job, not the suite's.
     env = {**os.environ, "PORT": str(TEST_PORT), "LLAMA_PORT": str(TEST_LLAMA_PORT),
-           "LLAMA_CTX": "4096", "MODEL": os.environ.get("MODEL", "e4b"),
-           "TEMPERATURE": os.environ.get("TEMPERATURE", "0"),
+           "LLAMA_CTX": "4096", "MODEL": SHELL_ENV.get("MODEL", "e4b"),
+           "TEMPERATURE": SHELL_ENV.get("TEMPERATURE", "0"),
            "REASONER_BASE_URL": f"http://127.0.0.1:{TEST_REASONER_PORT}/v1",
            "REASONER_API_KEY": "test-key", "REASONER_MODEL": "mock-model",
            "REASONER_TIMEOUT": "20"}
-    env.pop("LLAMA_SERVER_URL", None)
+    # A developer's .env must not change what the suite measures: every
+    # model/backend key is taken from SHELL_ENV (deliberate override) or
+    # pinned, never from .env — which by now is inside os.environ and
+    # would otherwise leak through the spread above. Set to "" rather
+    # than popped: the child runs load_dotenv() itself, which fills in
+    # missing keys from .env but never overrides an existing (even
+    # empty) one. LLAMA_SERVER_URL is cleared unconditionally — the
+    # suite owns its server topology (external servers go through
+    # PARLOR_TEST_URL instead).
+    for k in ("MODEL_PATH", "MMPROJ_PATH", "KOKORO_ONNX"):
+        env[k] = SHELL_ENV.get(k, "")
+    env["LLAMA_SERVER_URL"] = ""
     with open(log_path, "w") as log:
         proc = subprocess.Popen([sys.executable, "-m", "parlor.server"], cwd=ROOT,
                                 env=env, stdout=log, stderr=subprocess.STDOUT)

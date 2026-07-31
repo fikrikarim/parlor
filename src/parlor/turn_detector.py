@@ -15,6 +15,8 @@ import numpy as np
 import onnxruntime as ort
 from numpy.lib.stride_tricks import sliding_window_view
 
+from parlor import hf
+
 HF_REPO = "pipecat-ai/smart-turn-v3"
 HF_FILE = "smart-turn-v3.2-cpu.onnx"
 SAMPLE_RATE = 16000
@@ -24,11 +26,7 @@ WINDOW_SECONDS = 8  # the model judges the last 8 seconds of the utterance
 class TurnDetector:
     def __init__(self, model_path: str | None = None):
         if not model_path:
-            from huggingface_hub import hf_hub_download
-            try:
-                model_path = hf_hub_download(HF_REPO, HF_FILE)
-            except Exception:  # offline — use the local cache
-                model_path = hf_hub_download(HF_REPO, HF_FILE, local_files_only=True)
+            model_path = hf.download(HF_REPO, HF_FILE)
 
         so = ort.SessionOptions()
         so.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
