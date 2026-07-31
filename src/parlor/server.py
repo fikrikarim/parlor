@@ -655,7 +655,10 @@ async def websocket_endpoint(ws: WebSocket):
 
 def main() -> None:
     port = int(os.environ.get("PORT", "8000"))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    # localhost, not 0.0.0.0: browsers treat http://localhost as a secure
+    # context but not http://0.0.0.0, and without one getUserMedia (mic,
+    # camera) doesn't exist.
+    uvicorn.run(app, host="localhost", port=port)
 
 
 if __name__ == "__main__":
