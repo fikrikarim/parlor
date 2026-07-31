@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Parlor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-mark"></div>
+    <h1>Parlor</h1>
+  </div>
+  <span class="model-label">{{model}}</span>
+  <div id="status" class="status-pill disconnected">Disconnected</div>
+</header>
+
+<div class="portal-stack">
+  <!-- Webcam viewport with glow layers -->
+  <div id="viewportWrap" class="viewport-wrap loading">
+    <div class="viewport-glow"></div>
+    <video id="video" autoplay muted playsinline></video>
+  </div>
+
+  <!-- Audio waveform visualizer -->
+  <div class="waveform-wrap">
+    <canvas id="waveform"></canvas>
+  </div>
+
+  <!-- Transcript -->
+  <div id="messages" class="transcript"></div>
+
+  <!-- Controls -->
+  <div class="controls">
+    <button id="cameraToggle" class="ctrl-btn active">Camera On</button>
+    <div id="modeChip" class="mode-chip" hidden>
+      <span>Translating → English</span>
+      <button id="modeStop" class="mode-stop">stop</button>
+    </div>
+    <div class="state-indicator">
+      <div id="stateDot" class="dot loading"></div>
+      <span id="stateText">Loading...</span>
+    </div>
+    <span class="on-device-pill">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="4" width="12" height="9" rx="2"/><path d="M5 4V3a3 3 0 0 1 6 0v1"/></svg>
+      On-device
+    </span>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/ort.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@0.0.29/dist/bundle.min.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>

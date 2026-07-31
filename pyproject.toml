@@ -6,7 +6,6 @@ requires-python = ">=3.12,<3.13"
 dependencies = [
     "fastapi>=0.135.3",
     "kokoro-onnx>=0.5.0; sys_platform == 'linux'",
-    "litert-lm>=0.10.1",
     "misaki[en]>=0.9.4; sys_platform == 'darwin'",
     "mlx-audio>=0.4.2; sys_platform == 'darwin'",
     "num2words>=0.5.14; sys_platform == 'darwin'",
@@ -15,4 +14,21 @@ dependencies = [
     "soundfile>=0.13.1",
     "uvicorn[standard]>=0.43.0",
     "websockets>=16.0",
+    "python-dotenv>=1.0.0",
+    "onnxruntime>=1.24.4",
 ]
+
+[project.scripts]
+parlor = "parlor.server:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = ["pytest>=8.4"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["benchmarks"]  # tests synthesize speech via benchmarks/fixtures.py
+

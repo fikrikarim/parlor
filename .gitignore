@@ -13,6 +13,10 @@ wheels/
 *.bin
 *.litertlm
 
+# Generated benchmark artifacts
+benchmarks/fixtures/
+benchmarks/results/
+
 # macOS
 .DS_Store
 default.profraw
