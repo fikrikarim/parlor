@@ -140,6 +140,20 @@ FIXTURES = {
         "From now on, please translate everything I say into English.",
         ["translate"],
     ),
+    "cmd_translate_spanish": (
+        "From now on, please translate everything I say into Spanish.",
+        ["translate"],
+    ),
+    "cmd_translate_pair": (
+        "Please translate between English and Spanish for us.",
+        ["translate"],
+    ),
+    # Real Spanish speech (es→en direction of two-way interpreting),
+    # synthesized on the Spanish voice's own pipeline.
+    "es_train_station": (
+        "¿Dónde está la estación de tren más cercana?",
+        [],
+    ),
     "cmd_stop_translate": (
         "Okay, stop translating now and go back to normal conversation.",
         ["stop"],
@@ -175,7 +189,8 @@ FIXTURES = {
 }
 
 # Synthesis kwargs (see _synthesize) for base fixtures that need them.
-BASE_KWARGS = {"incomplete_cutoff": {"keep_frac": 0.55}}
+BASE_KWARGS = {"incomplete_cutoff": {"keep_frac": 0.55},
+               "es_train_station": {"voice": "ef_dora"}}
 
 # Degraded re-recordings of base fixtures, reproducing live-mic conditions
 # clean synthesis can't: VAD-clipped word endings (the encoder hallucinates
