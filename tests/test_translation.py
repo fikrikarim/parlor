@@ -47,3 +47,27 @@ def test_ui_stop_button_exits_translation(server, session):
     session.send({"type": "set_mode", "mode": "conversation"})
     changed = session.wait_for("mode_changed", timeout=10)
     assert changed and changed.get("mode") == "conversation"
+
+
+def test_translation_into_named_language(server, session):
+    server.require_managed()
+    # "…into Spanish": the decider captures the target and the rendering
+    # lands in it — 'Francia' survives any phrasing of the translation.
+    switch_by_voice(session, "cmd_translate_spanish", "translate")
+    t = session.turn(util.audio("capital_france"))
+    assert t.marker == "complete", t
+    assert "francia" in t.text.lower(), f"not Spanish: {t.text!r}"
+
+
+def test_two_way_translation_picks_direction(server, session):
+    server.require_managed()
+    # "between English and Spanish": the model picks the direction per
+    # utterance from the language it hears.
+    switch_by_voice(session, "cmd_translate_pair", "translate")
+    t = session.turn(util.audio("capital_france"))  # English in
+    assert t.marker == "complete", t
+    assert "francia" in t.text.lower(), f"en→es failed: {t.text!r}"
+    t = session.turn(util.audio("es_train_station"))  # real Spanish in
+    assert t.marker == "complete", t
+    low = t.text.lower()
+    assert "station" in low or "train" in low, f"es→en failed: {t.text!r}"

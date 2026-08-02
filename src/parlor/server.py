@@ -40,7 +40,7 @@ from dotenv import load_dotenv
 load_dotenv()  # before importing llama — it reads its config at import time
 
 from parlor import actions, llama, reasoner, tts
-from parlor.modes import MODES
+from parlor.modes import MODES, translate_mode
 from parlor.pipeline import (estimate_tokens, pad_tail_silence, prime_cache,
                              release_client, run_turn, send_json, text_part,
                              user_content, valid_audio, wav_to_float32)
@@ -91,17 +91,34 @@ RESEARCH_NOTE = (
     "directly and completely."
 )
 
-# The per-utterance instruction in translate mode. Exit commands are not
-# its concern: the action decider judges every utterance BEFORE this
-# prompt runs (see the turn loop), so the prompt stays a pure interpreter.
+# The per-utterance instruction in translate mode, parameterized by the
+# target (benchmarks/translatebench.py: 12/12 across Spanish, French,
+# Japanese). Exit commands are not its concern: the action decider judges
+# every utterance's reply (see the turn loop), so the prompt stays a pure
+# interpreter.
 TRANSLATE_PROMPT = (
     "Live translation mode. Begin your reply with one line: ###TRANSCRIPT: "
     "followed by the exact words the user said in this message's audio, in "
-    "their original language. Then, on a new line, write ONLY the English "
+    "their original language. Then, on a new line, write ONLY the {language} "
     "translation of those words — no commentary, no answers, no opinions. "
-    "If they already spoke English, restate their words in clear English. "
-    "If the audio has no clear words, write ###TRANSCRIPT: (no speech) "
-    "and nothing else."
+    "If they already spoke {language}, restate their words in clear "
+    "{language}. If the audio has no clear words, write ###TRANSCRIPT: "
+    "(no speech) and nothing else."
+)
+
+# The two-way variant: the model picks the direction per utterance from
+# the language it hears (measured 5/6 in translatebench — the miss a
+# transcript-only reply covered by the fallback line, never a wrong
+# direction). {a} anchors the pair: {a}-speech renders into {b}, anything
+# else into {a}.
+TWO_WAY_PROMPT = (
+    "Live translation mode. Begin your reply with one line: ###TRANSCRIPT: "
+    "followed by the exact words the user said in this message's audio, in "
+    "their original language. Then, on a new line, write ONLY the "
+    "translation of those words: if they spoke {a}, translate them into "
+    "{b}; otherwise translate them into {a} — no commentary, no answers, "
+    "no opinions. If the audio has no clear words, write ###TRANSCRIPT: "
+    "(no speech) and nothing else."
 )
 
 # The per-utterance instruction in listen mode: a silent scribe. Exit
@@ -115,9 +132,23 @@ LISTEN_PROMPT = (
     "(no speech) and nothing else."
 )
 
-# Modes whose audio turns replace the standard respond/flush instruction
+# A mode's audio turns replace the standard respond/flush instruction
 # wholesale (the mode chooses what a turn IS, not just how it's phrased).
-MODE_PROMPTS = {"translate": TRANSLATE_PROMPT, "listen": LISTEN_PROMPT}
+def mode_prompt(mode) -> str | None:
+    """The per-utterance instruction for the mode; None in conversation.
+    English anchors a pair when present: any third language then still
+    lands in English, an interpreter's sane default."""
+    if mode.name == "listen":
+        return LISTEN_PROMPT
+    if mode.name != "translate":
+        return None
+    langs = [lang.capitalize() for lang in mode.languages or ("english",)]
+    if len(langs) == 2:
+        a, b = langs
+        if b == "English":
+            a, b = b, a
+        return TWO_WAY_PROMPT.format(a=a, b=b)
+    return TRANSLATE_PROMPT.format(language=langs[0])
 
 # The ring is a server-initiated turn like a delegation delivery: the
 # model phrases the announcement, and if it yields nothing speakable the
@@ -425,20 +456,25 @@ async def websocket_endpoint(ws: WebSocket):
                 msg_queue.put_nowait(ready_events.pop(i))
                 return
 
-    async def switch_mode(name: str) -> bool:
-        """Enter a mode by name (model tag or UI escape hatch). Unknown and
-        already-current names are no-ops, so callers can pass raw values.
-        Returns whether a switch happened."""
+    async def switch_mode(name: str, languages: tuple = ()) -> bool:
+        """Enter a mode by name (decider or UI escape hatch), with the
+        translate target(s) when the decider captured them. Unknown and
+        already-current modes are no-ops, so callers can pass raw values.
+        Retargeting mid-translate ("into French instead") is out of reach
+        for now: while translating, the decider only sanctions exits —
+        the user must stop translating and ask again. Returns whether
+        the request landed."""
         nonlocal mode, frame_image, speech_chunks, held_audio
         name = name.strip().lower()
-        if name == mode.name:
-            return True  # already there — the tag "fired" in every sense
         if name not in MODES:
             # The model confirmed something out loud and then emitted junk —
             # make that diagnosable instead of a silent nothing.
             print(f"Ignoring unknown mode {name!r}")
             return False
-        mode = MODES[name]
+        new = translate_mode(languages) if name == "translate" else MODES[name]
+        if new == mode:
+            return True  # already there — the request "fired" in every sense
+        mode = new
         # Start the new mode clean: a switch through the UI escape hatch can
         # fire with audio held under the OLD mode's gating, and translate
         # mode never resolves holds — stale held state would keep
@@ -446,8 +482,10 @@ async def websocket_endpoint(ws: WebSocket):
         frame_image = None
         speech_chunks = []
         held_audio = []
-        print(f"Mode → {mode.name}")
-        await send_json(ws, {"type": "mode_changed", "mode": mode.name})
+        print(f"Mode → {mode.name}"
+              + (f" {list(mode.languages)}" if mode.name == "translate" else ""))
+        await send_json(ws, {"type": "mode_changed", "mode": mode.name,
+                             "languages": list(mode.languages)})
         drain_ready()  # leaving translation frees deferred deliveries
         return True
 
@@ -568,10 +606,10 @@ async def websocket_endpoint(ws: WebSocket):
             if decision.research:
                 await spawn_delegation(decision.research)
             if decision.mode:
-                await switch_mode(decision.mode)
+                await switch_mode(decision.mode, decision.languages)
             return
         if decision.mode:
-            await switch_mode(decision.mode)
+            await switch_mode(decision.mode, decision.languages)
         if mode.name == "conversation":  # exited just now
             if decision.timer:
                 await spawn_timer(*decision.timer)
@@ -783,8 +821,8 @@ async def websocket_endpoint(ws: WebSocket):
                     # Addressed to the assistant (an exit command): answer
                     # it as a normal conversation turn, not as content.
                     instruction = RESPOND_PROMPT.format(camera="")
-                elif mode.name in MODE_PROMPTS and has_audio:
-                    instruction = MODE_PROMPTS[mode.name]
+                elif mode_prompt(mode) and has_audio:
+                    instruction = mode_prompt(mode)
                 else:
                     instruction = turn_instruction(msg, bool(image), has_audio)
                 # Elapsed quiet, and whether a silent turn gets a spoken
