@@ -11,6 +11,16 @@ def _is_apple_silicon() -> bool:
     return sys.platform == "darwin" and platform.machine() == "arm64"
 
 
+# Kokoro voice names carry their language as a one-letter prefix ('a'
+# American English, 'e' Spanish, 'f' French, ...). The phoneme pipeline
+# must match it — text G2P'd through the wrong language is audible as a
+# heavy wrong accent (measured in benchmarks/translatebench.py). 'j'/'z'
+# voices additionally need the misaki[ja]/misaki[zh] extras installed.
+KOKORO_ESPEAK_LANG = {"a": "en-us", "b": "en-gb", "e": "es", "f": "fr-fr",
+                      "h": "hi", "i": "it", "j": "ja", "p": "pt-br",
+                      "z": "cmn"}
+
+
 class TTSBackend:
     """Unified TTS interface."""
 
@@ -32,7 +42,8 @@ class MLXBackend(TTSBackend):
         list(self._model.generate(text="Hello", voice="af_heart", speed=1.0))
 
     def generate(self, text: str, voice: str = "af_heart", speed: float = 1.1) -> np.ndarray:
-        results = list(self._model.generate(text=text, voice=voice, speed=speed))
+        results = list(self._model.generate(text=text, voice=voice,
+                                            lang_code=voice[0], speed=speed))
         return np.concatenate([np.array(r.audio) for r in results])
 
 
@@ -50,7 +61,8 @@ class ONNXBackend(TTSBackend):
         self.sample_rate = 24000
 
     def generate(self, text: str, voice: str = "af_heart", speed: float = 1.1) -> np.ndarray:
-        pcm, _sr = self._model.create(text, voice=voice, speed=speed)
+        lang = KOKORO_ESPEAK_LANG.get(voice[0], "en-us")
+        pcm, _sr = self._model.create(text, voice=voice, speed=speed, lang=lang)
         return pcm
 
 
