@@ -80,7 +80,7 @@ Set these in your shell or a `.env` at the repo root. The common ones:
 
 | Variable           | Default                        | Description                                    |
 | ------------------ | ------------------------------ | ---------------------------------------------- |
-| `MODEL`            | `e4b`                          | Gemma 4 size: `e2b` (fastest), `e4b` (better answers, ~1.8x e2b latency), `12b` (needs ~8GB) |
+| `MODEL`            | `e4b`                          | Gemma 4 size: `e2b` (fastest), `e4b` (better answers, ~1.8x e2b latency), `12b` (recommended if you have a high-end GPU) |
 | `PORT`             | `8000`                         | Server port                                    |
 | `REASONER_API_KEY` | (unset — research off)         | API key enabling background research           |
 | `REASONER_BASE_URL`| `https://openrouter.ai/api/v1` | Any OpenAI-compatible chat endpoint            |
