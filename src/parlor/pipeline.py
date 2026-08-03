@@ -315,8 +315,16 @@ async def run_turn(ws, messages: list, interrupted: asyncio.Event,
                 return
             if interrupted.is_set():
                 continue  # keep draining
-            pcm = await loop.run_in_executor(
-                None, lambda s=sentence: tts_backend.generate(s, voice=tts_voice))
+            try:
+                pcm = await loop.run_in_executor(
+                    None, lambda s=sentence: tts_backend.generate(s, voice=tts_voice))
+            except Exception as e:
+                # A sentence the voice can't speak (a script its G2P can't
+                # phonemize — e.g. Japanese through the English fallback
+                # voice) costs that sentence its audio, never the turn:
+                # the text already reached the client's transcript.
+                print(f"TTS failed on {sentence[:40]!r}: {type(e).__name__}: {e}")
+                continue
             if interrupted.is_set():
                 continue
             if not audio_state["started"]:

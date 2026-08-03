@@ -252,7 +252,7 @@ function connect() {
       const meta = messagesDiv.querySelector('.msg.assistant:last-child .meta');
       if (meta) meta.textContent += ` · tts ${msg.tts_time}s`;
     } else if (msg.type === 'mode_changed') {
-      setSessionMode(msg.mode);
+      setSessionMode(msg.mode, msg.languages);
     } else if (msg.type === 'delegation_started') {
       addDelegationChip(msg.id, msg.task);
     } else if (msg.type === 'delegation_parked') {
@@ -314,11 +314,17 @@ function setAssistantMeta(text) {
 
 // ── Session mode (server-driven; the chip's stop button is the escape
 // hatch for when the spoken exit command gets misheard) ──
-const MODE_LABELS = { translate: 'Translating → English', listen: 'Just listening' };
+const MODE_LABELS = { listen: 'Just listening' };
 
-function setSessionMode(mode) {
+function setSessionMode(mode, languages) {
   $('modeChip').hidden = mode === 'conversation';
-  $('modeLabel').textContent = MODE_LABELS[mode] || mode;
+  let label = MODE_LABELS[mode] || mode;
+  if (mode === 'translate') {
+    const langs = (languages || []).map(l => l.charAt(0).toUpperCase() + l.slice(1));
+    label = langs.length === 2 ? `Interpreting ${langs[0]} ↔ ${langs[1]}`
+                               : `Translating → ${langs[0] || 'English'}`;
+  }
+  $('modeLabel').textContent = label;
 }
 
 // ── Delegation chips: a background research task in flight, shown until

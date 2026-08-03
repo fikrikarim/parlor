@@ -137,7 +137,8 @@ def test_genuine_transcripts_pass_the_echo_guard():
     from parlor import server
     for prompt in (server.FLUSH_PROMPT.format(camera=""),
                    server.RESPOND_PROMPT.format(camera=""),
-                   server.TRANSLATE_PROMPT):
+                   server.TRANSLATE_PROMPT.format(language="English"),
+                   server.TWO_WAY_PROMPT.format(a="English", b="Spanish")):
         for said in ("What is the capital of France?",
                      "So the thing I wanted to ask you about is the weather "
                      "in Paris for my trip next week.",
@@ -182,8 +183,8 @@ def test_quoted_prompt_phrases_are_not_echoes():
     # then dropped the <mode>conversation</mode> exit).
     from parlor import server
     said = "Okay, stop translating now and go back to normal conversation."
-    assert not echoes_instruction(said, server.TRANSLATE_PROMPT)
+    assert not echoes_instruction(said, server.TRANSLATE_PROMPT.format(language="English"))
     # Unquoted instruction prose still reads as an echo.
     assert echoes_instruction(
         "If the audio has no clear words write no speech instead",
-        server.TRANSLATE_PROMPT)
+        server.TRANSLATE_PROMPT.format(language="English"))

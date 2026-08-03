@@ -54,7 +54,8 @@ _HEAD_COMMON = (
 _MODE_CLAUSES = {
     "conversation": (
         "mode: the mode they asked to SWITCH TO — 'translate' (translate "
-        "everything they say from now on), 'listen' (any ask for the "
+        "everything they say from now on, or interpret two-way between "
+        "two languages), 'listen' (any ask for the "
         "assistant to just listen, stay silent or quiet, or stop "
         "responding for a while) — the session is already in normal "
         "conversation, so mode is 'none' unless they asked to change it."),
@@ -70,6 +71,18 @@ _MODE_CLAUSES = {
         "thinking out loud, even wondering about something or mentioning "
         "the assistant, mode is 'none'."),
 }
+# The translate target(s), measured in benchmarks/translatebench.py
+# (13/14 with this wording and placement): one entry is a one-way target
+# ('english' when unnamed keeps the original behavior), two entries a
+# two-way interpreting pair.
+_LANG_CLAUSE = (
+    " languages: when mode is 'translate', the language or languages "
+    "involved, as lowercase English words: ONE entry — the language "
+    "everything the user says should be rendered into ('english' if they "
+    "didn't name one) — or TWO entries if they asked for two-way "
+    "interpreting between two languages (like between English and "
+    "Spanish); an empty list when mode is not 'translate'."
+)
 HEAD_SCHEMA = {
     "type": "object",
     "properties": {
@@ -77,9 +90,12 @@ HEAD_SCHEMA = {
         "timer_label": {"type": "string"},
         "mode": {"type": "string",
                  "enum": ["none", "translate", "listen", "conversation"]},
+        "languages": {"type": "array", "items": {"type": "string"},
+                      "maxItems": 2},
         "research_task": {"type": "string"},
     },
-    "required": ["timer_seconds", "timer_label", "mode", "research_task"],
+    "required": ["timer_seconds", "timer_label", "mode", "languages",
+                 "research_task"],
 }
 
 
@@ -88,6 +104,7 @@ class ActionDecision:
     """What the user asked for, typed. None/empty means 'nothing'."""
     timer: tuple[int, str] | None = None   # (seconds, label)
     mode: str | None = None                # target mode, already ≠ current
+    languages: tuple[str, ...] = ()        # translate target(s): 1 one-way, 2 pair
     research: str | None = None            # self-contained task
 
     def any(self) -> bool:
@@ -126,7 +143,8 @@ def _decide(build, current_mode: str) -> ActionDecision:
     """One grammar-forced head call. Failures return NONE: a lost
     decision is a no-op turn, never an exception in the turn loop."""
     try:
-        head_prompt = _HEAD_COMMON.format(mode_clause=_MODE_CLAUSES[current_mode])
+        head_prompt = (_HEAD_COMMON.format(mode_clause=_MODE_CLAUSES[current_mode])
+                       + _LANG_CLAUSE)
         # max_tokens must clear the JSON skeleton (~30 tokens) PLUS a long
         # restated research task — truncated JSON fails json.loads and
         # silently drops an action the reply already promised (review
@@ -148,8 +166,19 @@ def _decide(build, current_mode: str) -> ActionDecision:
     allowed = (("translate", "listen", "conversation")
                if current_mode == "conversation" else ("conversation",))
     mode = target if target in allowed and target != current_mode else None
+    # Normalized translate target(s); order kept (a pair reads naturally
+    # in the order it was asked), duplicates and blanks dropped.
+    languages: tuple[str, ...] = ()
+    if mode == "translate":
+        seen: list[str] = []
+        for lang in head.get("languages") or []:
+            lang = str(lang).strip().lower()
+            if lang and lang not in seen:
+                seen.append(lang)
+        languages = tuple(seen[:2])
     research = str(head.get("research_task", "")).strip() or None
-    decision = ActionDecision(timer=timer, mode=mode, research=research)
+    decision = ActionDecision(timer=timer, mode=mode, languages=languages,
+                              research=research)
     if decision.any():
         print(f"Action decision: {decision}")
     return decision
